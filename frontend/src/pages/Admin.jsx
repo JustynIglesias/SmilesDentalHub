@@ -25,6 +25,17 @@ const formatDate = (value) => {
   return `${MONTH_ABBR[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
 }
 
+const formatDateOnly = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 const calculateAge = (birthDate) => {
   if (!birthDate) return '-'
   const dob = new Date(birthDate)
@@ -79,6 +90,124 @@ const toTitleCase = (value) => {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i
+const OPTIONAL_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'])
+
+const splitFullName = (value) => {
+  const normalized = `${value ?? ''}`.trim().replace(/\s+/g, ' ')
+  if (!normalized) {
+    return { firstName: '', lastName: '' }
+  }
+
+  const segments = normalized.split(' ')
+  if (segments.length === 1) {
+    return { firstName: segments[0], lastName: '' }
+  }
+
+  return {
+    firstName: segments.slice(0, -1).join(' '),
+    lastName: segments.slice(-1).join(' '),
+  }
+}
+
+const splitStaffProfileName = (value) => {
+  const normalized = `${value ?? ''}`.trim().replace(/\s+/g, ' ')
+  if (!normalized) {
+    return {
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      suffix: '',
+    }
+  }
+
+  const segments = normalized.split(' ')
+  let suffix = ''
+  const working = [...segments]
+  const trailing = working.at(-1)?.toLowerCase()
+
+  if (trailing && OPTIONAL_SUFFIXES.has(trailing)) {
+    suffix = working.pop() || ''
+  }
+
+  if (working.length === 1) {
+    return {
+      firstName: working[0] || '',
+      middleName: '',
+      lastName: '',
+      suffix,
+    }
+  }
+
+  if (working.length === 2) {
+    return {
+      firstName: working[0] || '',
+      middleName: '',
+      lastName: working[1] || '',
+      suffix,
+    }
+  }
+
+  return {
+    firstName: working[0] || '',
+    middleName: working.slice(1, -1).join(' '),
+    lastName: working.at(-1) || '',
+    suffix,
+  }
+}
+
+const buildStaffFullName = ({ first_name, middle_name, last_name, suffix }) => (
+  [first_name, middle_name, last_name, suffix]
+    .map((value) => toTitleCase(`${value ?? ''}`.trim()))
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+)
+
+const buildSystemUserEmail = (username) => {
+  const normalizedUsername = `${username ?? ''}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '')
+
+  return normalizedUsername ? `${normalizedUsername}@smilesdentalhub.local` : ''
+}
+
+const formatStaffDisplayName = (profile) => {
+  const joinedFromColumns = buildStaffFullName({
+    first_name: profile?.first_name,
+    middle_name: profile?.middle_name,
+    last_name: profile?.last_name,
+    suffix: profile?.suffix,
+  })
+  const normalized = `${joinedFromColumns || profile?.full_name || ''}`.trim().replace(/\s+/g, ' ')
+  if (!normalized) return '-'
+
+  const segments = normalized.split(' ')
+  let suffix = ''
+  const working = [...segments]
+  const trailing = working.at(-1)?.toLowerCase()
+
+  if (trailing && OPTIONAL_SUFFIXES.has(trailing)) {
+    suffix = working.pop() || ''
+  }
+
+  if (working.length === 1) {
+    return [working[0], suffix].filter(Boolean).join(' ')
+  }
+
+  const firstName = working[0] || ''
+  const lastName = working.at(-1) || ''
+  const middleNames = working.slice(1, -1)
+  const middleInitial = middleNames.length > 0 ? `${middleNames[0][0]?.toUpperCase() || ''}.` : ''
+
+  return [
+    `${lastName},`,
+    firstName,
+    middleInitial,
+    suffix,
+  ].filter(Boolean).join(' ')
+}
 
 function Admin() {
   const [tab, setTab] = useState('users')
@@ -120,15 +249,21 @@ function Admin() {
   const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [isEditingUser, setIsEditingUser] = useState(false)
   const [invalidAddUserFields, setInvalidAddUserFields] = useState({})
   const [addUserValidationMessage, setAddUserValidationMessage] = useState('')
   const [isTestingWelcomeEmail, setIsTestingWelcomeEmail] = useState(false)
   const [userForm, setUserForm] = useState({
     user_id: '',
-    full_name: '',
+    first_name: '',
+    middle_name: '',
+    last_name: '',
+    suffix: '',
     email: '',
     username: '',
+    birth_date: '',
+    mobile_number: '',
+    address: '',
     password: '',
     role: 'receptionist',
     is_active: true,
@@ -137,7 +272,7 @@ function Admin() {
   const closeModal = () => {
     setModal(null)
     setSelected(null)
-    setShowCurrentPassword(false)
+    setIsEditingUser(false)
   }
 
   const showSuccess = (message) => {
@@ -148,7 +283,7 @@ function Admin() {
   const loadUsers = async () => {
     const { data, error: fetchError } = await supabase
       .from('staff_profiles')
-      .select('user_id, full_name, email, username, role, is_active, created_at, updated_at')
+      .select('user_id, full_name, first_name, middle_name, last_name, suffix, birth_date, mobile_number, address, email, username, role, is_active, created_at, updated_at')
       .eq('is_active', true)
       .order('created_at', { ascending: true })
 
@@ -177,7 +312,7 @@ function Admin() {
         .order('archived_at', { ascending: false }),
       supabase
         .from('staff_profiles')
-        .select('user_id, full_name, email, username, role, is_active, updated_at')
+        .select('user_id, full_name, first_name, middle_name, last_name, suffix, birth_date, mobile_number, address, email, username, role, is_active, updated_at')
         .eq('is_active', false)
         .order('updated_at', { ascending: false }),
       supabase
@@ -242,33 +377,77 @@ function Admin() {
   }
 
   const openEditUser = (user) => {
+    const { firstName, middleName, lastName, suffix } = splitStaffProfileName(user.full_name)
     setUserForm({
       user_id: user.user_id,
-      full_name: user.full_name,
+      first_name: firstName,
+      middle_name: middleName,
+      last_name: lastName,
+      suffix,
       email: user.email,
       username: user.username,
+      birth_date: user.birth_date || '',
+      mobile_number: user.mobile_number || user.phone || '',
+      address: user.address || user.home_address || '',
       password: '',
       role: user.role,
       is_active: user.is_active,
     })
-    setShowCurrentPassword(false)
+    setError('')
+    setIsEditingUser(false)
     setSelected(user)
     setModal('edit-user')
   }
 
+  const startUserEdit = () => {
+    setError('')
+    setIsEditingUser(true)
+  }
+
+  const cancelUserEdit = () => {
+    if (!selected) return
+    const { firstName, middleName, lastName, suffix } = splitStaffProfileName(selected.full_name)
+    setUserForm({
+      user_id: selected.user_id,
+      first_name: firstName,
+      middle_name: middleName,
+      last_name: lastName,
+      suffix,
+      email: selected.email,
+      username: selected.username,
+      birth_date: selected.birth_date || '',
+      mobile_number: selected.mobile_number || selected.phone || '',
+      address: selected.address || selected.home_address || '',
+      password: '',
+      role: selected.role,
+      is_active: selected.is_active,
+    })
+    setError('')
+    setIsEditingUser(false)
+  }
+
   const addUser = async () => {
-    const fullName = userForm.full_name.trim()
-    const email = userForm.email.trim()
+    const firstName = toTitleCase(userForm.first_name.trim())
+    const middleName = toTitleCase(userForm.middle_name?.trim?.() || '')
+    const lastName = toTitleCase(userForm.last_name.trim())
+    const suffix = toTitleCase(userForm.suffix?.trim?.() || '')
+    const fullName = buildStaffFullName({
+      first_name: firstName,
+      middle_name: middleName,
+      last_name: lastName,
+      suffix,
+    })
     const username = userForm.username.trim()
     const password = userForm.password.trim()
     const role = userForm.role.trim()
+    const email = buildSystemUserEmail(username)
 
     const nextInvalidFields = {}
-    if (!fullName) {
-      nextInvalidFields.full_name = true
+    if (!firstName) {
+      nextInvalidFields.first_name = true
     }
-    if (!email) {
-      nextInvalidFields.email = true
+    if (!lastName) {
+      nextInvalidFields.last_name = true
     }
     if (!username) {
       nextInvalidFields.username = true
@@ -281,7 +460,7 @@ function Admin() {
     }
     setInvalidAddUserFields(nextInvalidFields)
 
-    if (!fullName || !email || !username || !password || !role) {
+    if (!firstName || !lastName || !fullName || !email || !username || !password || !role) {
       setAddUserValidationMessage('Please fill out required fields.')
       setModal('add-user-validation')
       return
@@ -294,16 +473,43 @@ function Admin() {
       return
     }
 
-    const { error: createError } = await supabase.rpc('admin_create_user', {
-      p_email: email,
-      p_password: userForm.password,
-      p_full_name: toTitleCase(fullName),
-      p_username: username,
-      p_role: role,
-    })
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const accessToken = sessionData?.session?.access_token || ''
+      if (sessionError || !accessToken) {
+        setError('Unable to verify your session. Please log in again.')
+        return
+      }
 
-    if (createError) {
-      setError(createError.message)
+      const response = await fetch('/api/auth/admin-create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName,
+          username,
+          role,
+          firstName,
+          middleName,
+          lastName,
+          suffix,
+          birthDate: userForm.birth_date || null,
+          mobileNumber: userForm.mobile_number?.trim?.() || null,
+          address: userForm.address?.trim?.() || null,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(payload?.error || 'Unable to create user.')
+        return
+      }
+    } catch {
+      setError('Unable to create user.')
       return
     }
 
@@ -312,9 +518,15 @@ function Admin() {
     setAddUserValidationMessage('')
     setUserForm({
       user_id: '',
-      full_name: '',
+      first_name: '',
+      middle_name: '',
+      last_name: '',
+      suffix: '',
       email: '',
       username: '',
+      birth_date: '',
+      mobile_number: '',
+      address: '',
       password: '',
       role: 'receptionist',
       is_active: true,
@@ -379,9 +591,15 @@ function Admin() {
   const saveUserEdit = async () => {
     if (!selected) return
     const nextEmail = userForm.email.trim().toLowerCase()
+    const fullName = buildStaffFullName(userForm)
 
     if (!nextEmail) {
       setError('Email is required.')
+      return
+    }
+
+    if (!userForm.first_name.trim() || !userForm.last_name.trim()) {
+      setError('First name and last name are required.')
       return
     }
 
@@ -401,13 +619,22 @@ function Admin() {
       return
     }
 
-    const { error: updateError } = await supabase.rpc('admin_update_user_profile', {
-      p_user_id: selected.user_id,
-      p_full_name: toTitleCase(userForm.full_name.trim()),
-      p_username: userForm.username.trim(),
-      p_role: userForm.role,
-      p_is_active: userForm.is_active,
-    })
+    const { error: updateError } = await supabase
+      .from('staff_profiles')
+      .update({
+        full_name: fullName,
+        first_name: toTitleCase(userForm.first_name.trim()),
+        middle_name: toTitleCase(userForm.middle_name.trim()) || null,
+        last_name: toTitleCase(userForm.last_name.trim()),
+        suffix: toTitleCase(userForm.suffix.trim()) || null,
+        birth_date: userForm.birth_date || null,
+        mobile_number: userForm.mobile_number.trim() || null,
+        address: toTitleCase(userForm.address.trim()) || null,
+        username: userForm.username.trim(),
+        role: userForm.role,
+        is_active: userForm.is_active,
+      })
+      .eq('user_id', selected.user_id)
 
     if (updateError) {
       setError(updateError.message)
@@ -442,6 +669,7 @@ function Admin() {
     }
 
     await loadAll()
+    setIsEditingUser(false)
     closeModal()
     showSuccess('Updated successfully')
   }
@@ -978,8 +1206,7 @@ function Admin() {
             <div className="records-table users-table">
               <div className="table-head">
                 <span>Staff ID</span>
-                <span>Name</span>
-                <span>Username</span>
+                <span>Fullname</span>
                 <span>Email</span>
                 <span>Role</span>
                 <span>Date Created</span>
@@ -989,13 +1216,12 @@ function Admin() {
                 {usersPaging.pageRows.map((row) => (
                   <div key={row.user_id} className="table-row">
                     <span>{formatStaffCode(row.user_id)}</span>
-                    <span>{row.full_name}</span>
-                    <span>{row.username}</span>
+                    <span>{formatStaffDisplayName(row)}</span>
                     <span>{row.email}</span>
                     <span>{ROLE_LABELS[row.role] ?? row.role}</span>
                     <span>{formatDate(row.created_at)}</span>
                     <span className="row-actions">
-                      <button type="button" className="icon-btn" onClick={() => openEditUser(row)}>&#9998;</button>
+                      <button type="button" className="view" onClick={() => openEditUser(row)}>View</button>
                       {row.is_active ? (
                         <button
                           type="button"
@@ -1051,15 +1277,15 @@ function Admin() {
               }}
             >
               <div className="history-top-grid">
-                <label><span className="required-label">Full name<span className="required-asterisk">*</span></span><input className={invalidAddUserFields.full_name ? 'input-error' : ''} type="text" value={userForm.full_name} onChange={(e) => {
+                <label><span className="required-label">First name<span className="required-asterisk">*</span></span><input className={invalidAddUserFields.first_name ? 'input-error' : ''} type="text" value={userForm.first_name} onChange={(e) => {
                   const nextValue = toTitleCase(e.target.value)
-                  setUserForm((p) => ({ ...p, full_name: nextValue }))
-                  if (nextValue.trim()) setInvalidAddUserFields((p) => ({ ...p, full_name: false }))
+                  setUserForm((p) => ({ ...p, first_name: nextValue }))
+                  if (nextValue.trim()) setInvalidAddUserFields((p) => ({ ...p, first_name: false }))
                 }} /></label>
-                <label><span className="required-label">Email<span className="required-asterisk">*</span></span><input className={invalidAddUserFields.email ? 'input-error' : ''} type="email" value={userForm.email} onChange={(e) => {
-                  const nextValue = e.target.value
-                  setUserForm((p) => ({ ...p, email: nextValue }))
-                  if (EMAIL_PATTERN.test(nextValue.trim())) setInvalidAddUserFields((p) => ({ ...p, email: false }))
+                <label><span className="required-label">Last name<span className="required-asterisk">*</span></span><input className={invalidAddUserFields.last_name ? 'input-error' : ''} type="text" value={userForm.last_name} onChange={(e) => {
+                  const nextValue = toTitleCase(e.target.value)
+                  setUserForm((p) => ({ ...p, last_name: nextValue }))
+                  if (nextValue.trim()) setInvalidAddUserFields((p) => ({ ...p, last_name: false }))
                 }} /></label>
                 <label><span className="required-label">Username<span className="required-asterisk">*</span></span><input className={invalidAddUserFields.username ? 'input-error' : ''} type="text" value={userForm.username} onChange={(e) => {
                   const nextValue = e.target.value
@@ -1330,7 +1556,7 @@ function Admin() {
                     {(archiveType === 'patients' || archiveType === 'users') ? (
                       <>
                         <span>{archiveType === 'patients' ? formatPatientCode(row.patient_code, row.id) : formatStaffCode(row.user_id)}</span>
-                        <span>{archiveType === 'patients' ? `${row.last_name}, ${row.first_name}` : row.full_name}</span>
+                        <span>{archiveType === 'patients' ? `${row.last_name}, ${row.first_name}` : formatStaffDisplayName(row)}</span>
                         <span>{archiveType === 'patients' ? (row.sex === 'Male' ? 'M' : row.sex === 'Female' ? 'F' : row.sex) : row.username}</span>
                         <span>{archiveType === 'patients' ? calculateAge(row.birth_date) : (ROLE_LABELS[row.role] ?? row.role)}</span>
                         <span>{formatDate(archiveType === 'patients' ? row.archived_at : row.updated_at)}</span>
@@ -1360,39 +1586,38 @@ function Admin() {
       {modal ? <div className="modal-backdrop" onClick={closeModal} /> : null}
 
       {modal === 'edit-user' ? (
-        <div className="pr-modal procedures-modal">
-          <div className="pr-modal-head"><h2>Update User</h2><button type="button" onClick={closeModal}>X</button></div>
+        <div className="pr-modal procedures-modal admin-user-modal">
+          <div className="pr-modal-head">
+            <h2>View or Update User</h2>
+            <div className="admin-user-modal-head-actions">
+              {!isEditingUser ? (
+                <button type="button" className="icon-btn" onClick={startUserEdit} aria-label="Edit user">
+                  &#9998;
+                </button>
+              ) : null}
+              <button type="button" onClick={closeModal}>X</button>
+            </div>
+          </div>
           <div className="pr-modal-body">
             <div className="history-top-grid">
-              <label>Name<input type="text" value={userForm.full_name} onChange={(e) => setUserForm((p) => ({ ...p, full_name: toTitleCase(e.target.value) }))} /></label>
-              <label>Email<input type="email" value={userForm.email} onChange={(e) => setUserForm((p) => ({ ...p, email: e.target.value }))} /></label>
-              <label>Username<input type="text" value={userForm.username} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} /></label>
-              <label>
-                Current Password
-                <div className="admin-current-password-wrap">
-                  <input
-                    type={showCurrentPassword ? 'text' : 'password'}
-                    value={showCurrentPassword ? 'Current password is not available' : '********'}
-                    readOnly
-                  />
-                  <button
-                    type="button"
-                    className="admin-password-toggle"
-                    onClick={() => setShowCurrentPassword((previous) => !previous)}
-                    aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
-                    title={showCurrentPassword ? 'Hide current password' : 'Show current password'}
-                  >
-                    &#128065;
-                  </button>
-                </div>
-              </label>
-              <label>Role<select value={userForm.role} onChange={(e) => setUserForm((p) => ({ ...p, role: e.target.value }))}>{ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>
-              <label>Active<select value={userForm.is_active ? 'yes' : 'no'} onChange={(e) => setUserForm((p) => ({ ...p, is_active: e.target.value === 'yes' }))}><option value="yes">Yes</option><option value="no">No</option></select></label>
+              <label>Last Name<input type="text" value={userForm.last_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, last_name: toTitleCase(e.target.value) }))} /></label>
+              <label>First Name<input type="text" value={userForm.first_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, first_name: toTitleCase(e.target.value) }))} /></label>
+              <label>Middle Name<input type="text" value={userForm.middle_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, middle_name: toTitleCase(e.target.value) }))} /></label>
+              <label>Suffix<input type="text" value={userForm.suffix} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, suffix: toTitleCase(e.target.value) }))} /></label>
+              <label>Email<input type="email" value={userForm.email} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, email: e.target.value }))} /></label>
+              <label>Username<input type="text" value={userForm.username} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} /></label>
+              <label>Birthday<input type={isEditingUser ? 'date' : 'text'} value={isEditingUser ? userForm.birth_date : formatDateOnly(userForm.birth_date)} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, birth_date: e.target.value }))} /></label>
+              <label>Age<input type="text" value={calculateAge(userForm.birth_date)} readOnly /></label>
+              <label className="span-2">Mobile Number<input type="text" value={isEditingUser ? userForm.mobile_number : (userForm.mobile_number || '-')} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, mobile_number: e.target.value }))} /></label>
+              <label className="span-2">Address<input type="text" value={isEditingUser ? userForm.address : (userForm.address || '-')} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, address: e.target.value }))} /></label>
+              <label>Role<select value={userForm.role} disabled={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, role: e.target.value }))}>{ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>
             </div>
-            <div className="modal-actions">
-              <button type="button" className="danger-btn" onClick={closeModal}>Cancel</button>
-              <button type="button" className="success-btn" onClick={() => { void saveUserEdit() }}>Update</button>
-            </div>
+            {isEditingUser ? (
+              <div className="modal-actions admin-user-modal-actions">
+                <button type="button" className="danger-btn" onClick={cancelUserEdit}>Cancel</button>
+                <button type="button" className="success-btn" onClick={() => { void saveUserEdit() }}>Update</button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

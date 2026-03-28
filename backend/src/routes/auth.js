@@ -1,17 +1,89 @@
 const express = require('express');
+const crypto = require('crypto');
 const { createSupabaseClient } = require('../supabase');
 const config = require('../config');
 const { getBearerToken, requireAccessToken } = require('../middleware/auth');
 const { sendSupabaseError } = require('../lib/response');
-const { isSmtpConfigured, sendWelcomeTestEmail } = require('../lib/mailer');
+const { isSmtpConfigured, sendEmailChangeVerificationEmail, sendWelcomeTestEmail } = require('../lib/mailer');
 
 const router = express.Router();
+const emailChangeVerificationStore = new Map();
+const EMAIL_CHANGE_CODE_EXPIRY_MS = 10 * 60 * 1000;
+const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+
+function createSixDigitCode() {
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+async function updateEmailForUser({ userId, email }) {
+  if (!config.supabaseServiceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for email updates.');
+  }
+
+  const serviceClient = createSupabaseClient({ useServiceRole: true });
+
+  const { error: authUpdateError } = await serviceClient.auth.admin.updateUserById(userId, {
+    email,
+    email_confirm: true,
+  });
+  if (authUpdateError) throw authUpdateError;
+
+  const { error: profileUpdateError } = await serviceClient
+    .from('staff_profiles')
+    .update({ email })
+    .eq('user_id', userId);
+  if (profileUpdateError) throw profileUpdateError;
+}
+
+async function requireAdminRequester(accessToken) {
+  const requesterClient = createSupabaseClient({ accessToken });
+  const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+  if (requesterUserError || !requesterUserData?.user?.id) {
+    return {
+      errorResponse: {
+        status: 401,
+        payload: requesterUserError || { message: 'Unable to resolve authenticated user.' },
+      },
+    };
+  }
+
+  const serviceClient = createSupabaseClient({ useServiceRole: true });
+  const { data: requesterProfile, error: requesterProfileError } = await serviceClient
+    .from('staff_profiles')
+    .select('user_id, full_name, role, is_active')
+    .eq('user_id', requesterUserData.user.id)
+    .maybeSingle();
+
+  if (requesterProfileError) {
+    return {
+      errorResponse: {
+        status: 403,
+        payload: requesterProfileError,
+      },
+    };
+  }
+
+  if (!requesterProfile || !requesterProfile.is_active || requesterProfile.role !== 'admin') {
+    return {
+      errorResponse: {
+        status: 403,
+        payload: { error: 'Forbidden: admin role required.' },
+      },
+    };
+  }
+
+  return {
+    requesterUserData,
+    requesterProfile,
+    serviceClient,
+  };
+}
 
 async function resolveLoginEmail(login) {
   const client = createSupabaseClient();
@@ -187,6 +259,156 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
   }
 });
 
+router.post('/update-email', requireAccessToken, async (req, res) => {
+  try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for email updates.' });
+    }
+
+    const nextEmail = normalizeString(req.body?.email).toLowerCase();
+    if (!nextEmail) {
+      return res.status(400).json({ error: 'email is required.' });
+    }
+    if (!EMAIL_PATTERN.test(nextEmail)) {
+      return res.status(400).json({ error: 'Invalid email format.' });
+    }
+
+    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
+    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+    if (requesterUserError || !requesterUserData?.user?.id) {
+      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
+    }
+
+    const currentEmail = normalizeString(requesterUserData.user.email).toLowerCase();
+    if (currentEmail === nextEmail) {
+      return res.json({ message: 'Email unchanged.', email: nextEmail });
+    }
+
+    await updateEmailForUser({
+      userId: requesterUserData.user.id,
+      email: nextEmail,
+    });
+
+    return res.json({
+      message: 'Email updated successfully.',
+      email: nextEmail,
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
+router.post('/request-email-change-code', requireAccessToken, async (req, res) => {
+  try {
+    const nextEmail = normalizeString(req.body?.email).toLowerCase();
+    if (!nextEmail) {
+      return res.status(400).json({ error: 'email is required.' });
+    }
+    if (!EMAIL_PATTERN.test(nextEmail)) {
+      return res.status(400).json({ error: 'Invalid email format.' });
+    }
+    if (!isSmtpConfigured()) {
+      return res.status(500).json({ error: 'SMTP is not configured for verification emails.' });
+    }
+
+    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
+    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+    if (requesterUserError || !requesterUserData?.user?.id) {
+      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
+    }
+
+    const currentEmail = normalizeString(requesterUserData.user.email).toLowerCase();
+    if (currentEmail === nextEmail) {
+      return res.status(400).json({ error: 'Please enter a different email address.' });
+    }
+
+    const code = createSixDigitCode();
+    const expiresAt = Date.now() + EMAIL_CHANGE_CODE_EXPIRY_MS;
+
+    emailChangeVerificationStore.set(requesterUserData.user.id, {
+      code,
+      email: nextEmail,
+      expiresAt,
+      attempts: 0,
+    });
+
+    await sendEmailChangeVerificationEmail({
+      toEmail: nextEmail,
+      code,
+      requestedBy: requesterUserData.user.email || 'Smiles Dental Hub',
+      expiresInMinutes: Math.round(EMAIL_CHANGE_CODE_EXPIRY_MS / 60000),
+    });
+
+    return res.json({
+      message: 'Verification code sent to email.',
+      email: nextEmail,
+      expiresInMinutes: Math.round(EMAIL_CHANGE_CODE_EXPIRY_MS / 60000),
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
+router.post('/verify-email-change-code', requireAccessToken, async (req, res) => {
+  try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for email updates.' });
+    }
+
+    const nextEmail = normalizeString(req.body?.email).toLowerCase();
+    const code = normalizeString(req.body?.code);
+
+    if (!nextEmail || !code) {
+      return res.status(400).json({ error: 'email and code are required.' });
+    }
+
+    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
+    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+    if (requesterUserError || !requesterUserData?.user?.id) {
+      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
+    }
+
+    const storedVerification = emailChangeVerificationStore.get(requesterUserData.user.id);
+    if (!storedVerification) {
+      return res.status(400).json({ error: 'No active email verification request found.' });
+    }
+
+    if (storedVerification.expiresAt < Date.now()) {
+      emailChangeVerificationStore.delete(requesterUserData.user.id);
+      return res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
+    }
+
+    if (storedVerification.email !== nextEmail) {
+      return res.status(400).json({ error: 'The email does not match the pending verification request.' });
+    }
+
+    if (storedVerification.attempts >= EMAIL_CHANGE_MAX_ATTEMPTS) {
+      emailChangeVerificationStore.delete(requesterUserData.user.id);
+      return res.status(400).json({ error: 'Too many invalid attempts. Please request a new code.' });
+    }
+
+    if (storedVerification.code !== code) {
+      storedVerification.attempts += 1;
+      emailChangeVerificationStore.set(requesterUserData.user.id, storedVerification);
+      return res.status(400).json({ error: 'Invalid verification code.' });
+    }
+
+    await updateEmailForUser({
+      userId: requesterUserData.user.id,
+      email: nextEmail,
+    });
+
+    emailChangeVerificationStore.delete(requesterUserData.user.id);
+
+    return res.json({
+      message: 'Email updated successfully.',
+      email: nextEmail,
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
 router.post('/admin-update-user-email', requireAccessToken, async (req, res) => {
   try {
     if (!config.supabaseServiceRoleKey) {
@@ -200,24 +422,13 @@ router.post('/admin-update-user-email', requireAccessToken, async (req, res) => 
       return res.status(400).json({ error: 'userId and email are required.' });
     }
 
-    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
-    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
-    if (requesterUserError || !requesterUserData?.user?.id) {
-      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
+    const adminContext = await requireAdminRequester(req.accessToken);
+    if (adminContext.errorResponse) {
+      const { status, payload } = adminContext.errorResponse;
+      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
     }
 
-    const serviceClient = createSupabaseClient({ useServiceRole: true });
-
-    const { data: requesterProfile, error: requesterProfileError } = await serviceClient
-      .from('staff_profiles')
-      .select('user_id, role, is_active')
-      .eq('user_id', requesterUserData.user.id)
-      .maybeSingle();
-
-    if (requesterProfileError) return sendSupabaseError(res, requesterProfileError, 403);
-    if (!requesterProfile || !requesterProfile.is_active || requesterProfile.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden: admin role required.' });
-    }
+    const { serviceClient } = adminContext;
 
     const { data: targetProfile, error: targetProfileError } = await serviceClient
       .from('staff_profiles')
@@ -252,6 +463,105 @@ router.post('/admin-update-user-email', requireAccessToken, async (req, res) => 
   }
 });
 
+router.post('/admin-create-user', requireAccessToken, async (req, res) => {
+  try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for admin user creation.' });
+    }
+
+    const email = normalizeString(req.body?.email).toLowerCase();
+    const password = normalizeString(req.body?.password);
+    const fullName = normalizeString(req.body?.fullName);
+    const username = normalizeString(req.body?.username).toLowerCase();
+    const role = normalizeString(req.body?.role);
+    const firstName = normalizeString(req.body?.firstName);
+    const middleName = normalizeString(req.body?.middleName);
+    const lastName = normalizeString(req.body?.lastName);
+    const suffix = normalizeString(req.body?.suffix);
+    const birthDate = normalizeString(req.body?.birthDate) || null;
+    const mobileNumber = normalizeString(req.body?.mobileNumber) || null;
+    const address = normalizeString(req.body?.address) || null;
+
+    if (!email || !password || !fullName || !username || !role) {
+      return res.status(400).json({ error: 'email, password, fullName, username, and role are required.' });
+    }
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+    if (!['admin', 'receptionist', 'associate_dentist'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role.' });
+    }
+
+    const adminContext = await requireAdminRequester(req.accessToken);
+    if (adminContext.errorResponse) {
+      const { status, payload } = adminContext.errorResponse;
+      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
+    }
+
+    const { serviceClient } = adminContext;
+
+    const { data: existingUsername, error: existingUsernameError } = await serviceClient
+      .from('staff_profiles')
+      .select('user_id')
+      .eq('username', username)
+      .maybeSingle();
+    if (existingUsernameError) return sendSupabaseError(res, existingUsernameError);
+    if (existingUsername) {
+      return res.status(409).json({ error: 'Username already exists.' });
+    }
+
+    const { data: createdUserData, error: createUserError } = await serviceClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        role,
+        full_name: fullName,
+        username,
+      },
+      app_metadata: {
+        provider: 'email',
+        providers: ['email'],
+      },
+    });
+    if (createUserError || !createdUserData?.user?.id) {
+      return sendSupabaseError(res, createUserError || { message: 'Unable to create user.' });
+    }
+
+    const { error: profileUpdateError } = await serviceClient
+      .from('staff_profiles')
+      .update({
+        full_name: fullName,
+        first_name: firstName || null,
+        middle_name: middleName || null,
+        last_name: lastName || null,
+        suffix: suffix || null,
+        birth_date: birthDate,
+        mobile_number: mobileNumber,
+        address,
+        username,
+        email,
+        role,
+        is_active: true,
+      })
+      .eq('user_id', createdUserData.user.id);
+
+    if (profileUpdateError) {
+      return sendSupabaseError(res, profileUpdateError);
+    }
+
+    return res.status(201).json({
+      message: 'User created successfully.',
+      userId: createdUserData.user.id,
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
 router.post('/admin-send-user-welcome-email', requireAccessToken, async (req, res) => {
   try {
     const email = normalizeString(req.body?.email).toLowerCase();
@@ -263,22 +573,13 @@ router.post('/admin-send-user-welcome-email', requireAccessToken, async (req, re
       return res.status(400).json({ error: 'Invalid email format.' });
     }
 
-    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
-    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
-    if (requesterUserError || !requesterUserData?.user?.id) {
-      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
+    const adminContext = await requireAdminRequester(req.accessToken);
+    if (adminContext.errorResponse) {
+      const { status, payload } = adminContext.errorResponse;
+      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
     }
 
-    const { data: requesterProfile, error: requesterProfileError } = await requesterClient
-      .from('staff_profiles')
-      .select('user_id, role, is_active')
-      .eq('user_id', requesterUserData.user.id)
-      .maybeSingle();
-
-    if (requesterProfileError) return sendSupabaseError(res, requesterProfileError, 403);
-    if (!requesterProfile || !requesterProfile.is_active || requesterProfile.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden: admin role required.' });
-    }
+    const { requesterUserData, requesterProfile } = adminContext;
 
     if (!isSmtpConfigured()) {
       return res.status(500).json({

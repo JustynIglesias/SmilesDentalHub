@@ -135,7 +135,7 @@ function AppRoutes() {
 
     const { data: profileData, error: profileError } = await supabase
       .from('staff_profiles')
-      .select('user_id, full_name, username, email, role, is_active')
+      .select('user_id, full_name, first_name, middle_name, last_name, suffix, birth_date, mobile_number, address, username, email, role, is_active')
       .eq('user_id', userId)
       .maybeSingle()
 

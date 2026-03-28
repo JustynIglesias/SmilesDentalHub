@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
-import navbarLogo from '../assets/navbar_logo.png'
+import navbarLogo from '../assets/NAVBARLOGO.png'
 import homeIcon from '../assets/icon/Home.png'
 import patientRecordsIcon from '../assets/icon/Patient Records.png'
 import addPatientIcon from '../assets/icon/Add patient.png'
@@ -18,7 +18,48 @@ const NAV_ICONS = {
   procedure: procedureIcon,
   logs: patientLogsIcon,
   admin: adminIcon,
-  settings: adminIcon,
+}
+
+function SettingsGearIcon() {
+  return (
+    <svg
+      className="nav-icon-svg"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3.75l1.12 1.82a1 1 0 0 0 .88.48l2.1-.08.88 1.53-1.16 1.74a1 1 0 0 0 0 1.03l1.16 1.74-.88 1.53-2.1-.08a1 1 0 0 0-.88.48L12 20.25l-1.12-1.82a1 1 0 0 0-.88-.48l-2.1.08-.88-1.53 1.16-1.74a1 1 0 0 0 0-1.03L7.02 11.99l.88-1.53 2.1.08a1 1 0 0 0 .88-.48L12 3.75Z"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="2.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+    </svg>
+  )
+}
+
+function renderNavIcon(itemId) {
+  if (itemId === 'settings') {
+    return (
+      <span className="nav-icon" aria-hidden="true">
+        <SettingsGearIcon />
+      </span>
+    )
+  }
+
+  return (
+    <img className="nav-icon image" src={NAV_ICONS[itemId] ?? homeIcon} alt="" aria-hidden="true" />
+  )
 }
 
 function Sidebar({ onLogout, navItems }) {
@@ -139,15 +180,17 @@ function Sidebar({ onLogout, navItems }) {
         <nav className="sidebar-nav">
           {(navItems ?? []).map((item) => (
             <NavLink key={item.id} to={item.path} className="nav-item" onClick={(event) => handleNavClick(event, item.path)}>
-              <img className="nav-icon image" src={NAV_ICONS[item.id] ?? homeIcon} alt="" aria-hidden="true" />
-              {item.label}
+              {renderNavIcon(item.id)}
+              <span className="nav-item-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>
-        <button type="button" className="logout" onClick={onLogout}>
-          <img className="nav-icon image" src={logoutIcon} alt="" aria-hidden="true" />
-          Logout
-        </button>
+        <div className="sidebar-footer">
+          <button type="button" className="logout" onClick={onLogout}>
+            <img className="nav-icon image" src={logoutIcon} alt="" aria-hidden="true" />
+            <span className="nav-item-label">Logout</span>
+          </button>
+        </div>
       </aside>
 
       {guardState.isOpen ? (
