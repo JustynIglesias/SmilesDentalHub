@@ -18,6 +18,7 @@ const NAV_ICONS = {
   procedure: procedureIcon,
   logs: patientLogsIcon,
   admin: adminIcon,
+  settings: adminIcon,
 }
 
 function Sidebar({ onLogout, navItems }) {

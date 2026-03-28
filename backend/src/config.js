@@ -1,5 +1,9 @@
+const path = require('path');
 const dotenv = require('dotenv');
 
+// Prefer a single repo-level .env so frontend and backend share one config file.
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Keep backend/.env as a fallback for older local setups.
 dotenv.config();
 
 function parseOrigins(rawOrigins) {

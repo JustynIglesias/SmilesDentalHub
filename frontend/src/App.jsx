@@ -11,9 +11,22 @@ import Procedures from './pages/Procedures'
 import PatientLogs from './pages/PatientLogs'
 import Admin from './pages/Admin'
 import ResetPassword from './pages/ResetPassword'
+import Settings from './pages/Settings'
 import { isAccessTokenExpired, missingSupabaseEnv, supabase } from './lib/supabaseClient'
 
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
+const SETTINGS_NAV_ITEM = {
+  id: 'settings',
+  label: 'Settings',
+  path: '/settings',
+}
+
+const appendSettingsNavItem = (items = []) => {
+  if (items.some((item) => item.path === SETTINGS_NAV_ITEM.path || item.id === SETTINGS_NAV_ITEM.id)) {
+    return items
+  }
+  return [...items, SETTINGS_NAV_ITEM]
+}
 
 function LoginRoute({
   onLogin,
@@ -71,7 +84,7 @@ function LoginRoute({
   )
 }
 
-function ProtectedLayout({ onLogout, navItems, role, profile }) {
+function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser }) {
   return (
     <div className="dashboard">
       <Sidebar onLogout={onLogout} navItems={navItems} />
@@ -83,6 +96,7 @@ function ProtectedLayout({ onLogout, navItems, role, profile }) {
           <Route path="/add-patient" element={<AddPatient />} />
           <Route path="/procedure" element={<Procedures />} />
           <Route path="/logs" element={<PatientLogs />} />
+          <Route path="/settings" element={<Settings currentProfile={profile} currentSessionUser={sessionUser} />} />
           {role === 'admin' ? <Route path="/admin" element={<Admin currentProfile={profile} />} /> : <Route path="/admin" element={<Navigate to="/home" replace />} />}
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
@@ -121,7 +135,7 @@ function AppRoutes() {
 
     const { data: profileData, error: profileError } = await supabase
       .from('staff_profiles')
-      .select('user_id, full_name, role, is_active')
+      .select('user_id, full_name, username, email, role, is_active')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -144,11 +158,11 @@ function AppRoutes() {
 
     profileUserIdRef.current = profileData.user_id
     setProfile(profileData)
-    setNavItems((navigationData ?? []).map((row) => ({
+    setNavItems(appendSettingsNavItem((navigationData ?? []).map((row) => ({
       id: row.item_key,
       label: row.label,
       path: row.path,
-    })))
+    }))))
     setError('')
     return true
   }, [])
@@ -371,8 +385,10 @@ function AppRoutes() {
         return
       }
 
+      setForgotUsername(payload?.email || username)
+      setForgotCode('')
       setForgotStep('verify')
-      setForgotSuccess('Verification code sent. Check your email inbox.')
+      setForgotSuccess(`Verification code sent to ${payload?.email || username}. Check your email inbox for the latest code.`)
       setIsSendingReset(false)
     } catch {
       setForgotError('Unable to send verification code. Please try again.')
@@ -409,7 +425,11 @@ function AppRoutes() {
 
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setForgotError(payload?.error || 'Invalid or expired verification code.')
+        const rawError = String(payload?.error || '').toLowerCase()
+        const nextError = rawError.includes('expired') || rawError.includes('invalid')
+          ? 'That verification code is invalid or expired. Please use the latest code sent to your email, or request a new one.'
+          : (payload?.error || 'Invalid or expired verification code.')
+        setForgotError(nextError)
         setIsVerifyingCode(false)
         return
       }
@@ -648,7 +668,7 @@ function AppRoutes() {
           }
         />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/*" element={<ProtectedLayout onLogout={handleLogoutRequest} navItems={navItems} role={profile?.role} profile={profile} />} />
+        <Route path="/*" element={<ProtectedLayout onLogout={handleLogoutRequest} navItems={navItems} role={profile?.role} profile={profile} sessionUser={session?.user} />} />
       </Routes>
 
       {isLogoutModalOpen ? (
