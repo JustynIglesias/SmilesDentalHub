@@ -1157,19 +1157,19 @@ body {
 }
 
 .records-footer {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   color: #697985;
-  font-size: 13px;
+  font-size: 12px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .pagination {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1199,12 +1199,12 @@ body {
   border: none;
   background: #e3e8ec;
   color: #7d8992;
-  padding: 5px 9px;
-  min-height: 32px;
-  border-radius: 8px;
+  padding: 4px 8px;
+  min-height: 30px;
+  border-radius: 7px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .pagination button.active {
@@ -1223,9 +1223,9 @@ body {
 .page-jump-form label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: #47606f;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1233,25 +1233,26 @@ body {
 .page-jump-form input {
   border-radius: 9px;
   border: 1px solid var(--border-strong);
-  padding: 5px 9px;
-  min-height: 32px;
+  padding: 4px 8px;
+  min-height: 30px;
   background: #fff;
   color: #214252;
+  font-size: 12px;
 }
 
 .page-size-control select {
-  min-width: 78px;
+  min-width: 72px;
 }
 
 .page-jump-form {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-left: 0;
 }
 
 .page-jump-form input {
-  width: 72px;
+  width: 66px;
 }
 
 .easy-date-input {
@@ -1396,12 +1397,13 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .settings-column {
   display: grid;
   gap: 22px;
+  height: 100%;
 }
 
 .settings-hero-card {
@@ -1507,6 +1509,7 @@ body {
 }
 
 .settings-section-card {
+  height: 100%;
   padding: 24px 24px 22px;
   border-radius: 24px;
   background: linear-gradient(180deg, #ffffff 0%, #fbfdfe 100%);
@@ -1545,6 +1548,16 @@ body {
 
 .settings-grid input {
   min-height: 44px;
+}
+
+.settings-ph-mobile-field .ph-mobile-prefix {
+  min-height: 44px;
+  border-radius: 10px 0 0 10px;
+}
+
+.settings-ph-mobile-field > input {
+  min-height: 44px;
+  border-radius: 0 10px 10px 0;
 }
 
 .settings-profile-grid input[readonly] {
@@ -2138,7 +2151,7 @@ body {
   display: grid;
   grid-template-columns: 1.5fr 1fr 100px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 9px 14px;
   gap: 10px;
 }
 
@@ -2172,6 +2185,7 @@ body {
   border-bottom: 1px solid #edf3f7;
   color: #284655;
   font-size: var(--fs-table);
+  line-height: 1.25;
 }
 
 .simple-body .simple-row:last-child {
@@ -2251,6 +2265,15 @@ body {
   min-height: 46px;
   font-size: 17px;
   background: #ffffff;
+}
+
+.form-grid input.is-locked,
+.form-grid input[readonly].is-locked {
+  background: #edf3f7;
+  color: #6d7f8b;
+  border-color: #c7d6e1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  cursor: not-allowed;
 }
 
 .form-grid input.input-error,
@@ -2435,6 +2458,23 @@ body {
 .admin-user-modal .pr-modal-body {
   max-height: calc(100vh - 156px);
   padding-bottom: 18px;
+}
+
+.admin-user-modal .history-top-grid input.is-editable,
+.admin-user-modal .history-top-grid select.is-editable {
+  background: #ffffff;
+  border-color: #8ab7d3;
+  box-shadow: 0 0 0 1px rgba(19, 122, 168, 0.08);
+}
+
+.admin-user-modal .history-top-grid input.is-locked,
+.admin-user-modal .history-top-grid input[readonly].is-locked,
+.admin-user-modal .history-top-grid select:disabled {
+  background: #edf3f7;
+  color: #6d7f8b;
+  border-color: #c7d6e1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  cursor: not-allowed;
 }
 
 .admin-user-modal-actions {
@@ -5509,11 +5549,32 @@ body {
   gap: 20px;
 }
 
+.procedures-panel.fixed-table-page {
+  height: auto;
+  min-height: calc(100vh - 156px);
+  overflow: visible;
+}
+
+.procedures-panel.fixed-table-page .grid-two,
+.procedures-panel.fixed-table-page .panel-card {
+  min-height: 0;
+  overflow: visible;
+}
+
 .procedures-list-card h2,
 .procedures-form-card h2 {
   margin: 0 0 10px;
   font-size: 26px;
   line-height: 1.2;
+}
+
+.procedures-search-box {
+  width: min(100%, 440px);
+  margin: 0 0 14px;
+}
+
+.procedures-search-box input {
+  width: 100%;
 }
 
 .procedures-panel .simple-head {
@@ -5573,9 +5634,9 @@ body {
 }
 
 .procedures-panel .simple-table .icon-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
 }
 
 .procedures-modal {
@@ -5681,18 +5742,26 @@ body {
 }
 
 .admin-panel.v2 .records-header {
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-end;
   gap: 16px 20px;
 }
 
+.admin-panel.v2 .records-header > div:first-child {
+  display: grid;
+  gap: 10px;
+}
+
 .admin-panel.v2 .records-header h2 {
-  margin-bottom: 8px;
+  margin: 0;
   font-size: 24px;
   line-height: 1.1;
 }
 
 .admin-panel.v2 .records-toolbar {
   flex: 1 1 360px;
+  display: flex;
+  align-items: stretch;
 }
 
 .admin-panel.v2 .records-toolbar .search-box {
@@ -5702,8 +5771,10 @@ body {
 
 .admin-panel.v2 .records-actions {
   margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px 12px;
 }
 
@@ -5714,8 +5785,8 @@ body {
 .admin-panel.v2 .table-head,
 .admin-panel.v2 .table-row {
   column-gap: 14px;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding-top: 9px;
+  padding-bottom: 9px;
 }
 
 .admin-panel.v2 .table-head span,
@@ -5731,7 +5802,7 @@ body {
 
 .admin-panel.v2 .table-row {
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .admin-panel.v2 .row-actions {
@@ -5740,10 +5811,10 @@ body {
 }
 
 .admin-panel.v2 .view {
-  min-width: 74px;
-  min-height: 34px;
-  padding: 7px 12px;
-  font-size: 12px;
+  min-width: 68px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
 }
 
 .admin-panel.v2 .users-table .row-actions {
@@ -5785,6 +5856,28 @@ body {
   min-height: 32px;
 }
 
+.admin-panel.v2 .records-actions .sorter select,
+.admin-panel.v2 .records-actions .sort-direction-btn,
+.admin-panel.v2 .records-actions .primary {
+  min-height: 46px;
+  border-radius: 14px;
+}
+
+.admin-panel.v2 .records-actions .primary {
+  min-width: 170px;
+  padding: 10px 18px;
+}
+
+.admin-panel.v2 .records-actions .sorter select {
+  min-width: 202px;
+  padding: 10px 18px;
+}
+
+.admin-panel.v2 .records-actions .sort-direction-btn {
+  min-width: 84px;
+  padding: 0 16px;
+}
+
 .admin-panel.v2 .page-size-control select,
 .admin-panel.v2 .page-jump-form input {
   padding: 5px 9px;
@@ -5801,16 +5894,60 @@ body {
   align-items: center;
 }
 
+.admin-panel.v2 .records-footer,
+.admin-panel.v2 .page-size-control,
+.admin-panel.v2 .page-jump-form label,
+.admin-panel.v2 .pagination button {
+  font-size: 12px;
+}
+
 .admin-panel.v2 .records-footer > span {
   line-height: 1.35;
 }
 
 .admin-panel.v2 .pagination {
+  gap: 8px;
   justify-content: flex-end;
 }
 
 .admin-panel.v2 .pagination-group {
   padding: 6px 8px;
+  border-radius: 14px;
+}
+
+.admin-panel.v2 .page-size-control,
+.admin-panel.v2 .page-jump-form label {
+  gap: 6px;
+}
+
+.admin-panel.v2 .page-size-control select,
+.admin-panel.v2 .page-jump-form input,
+.admin-panel.v2 .pagination button {
+  min-height: 26px;
+}
+
+.admin-panel.v2 .page-size-control select,
+.admin-panel.v2 .page-jump-form input {
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.admin-panel.v2 .page-size-control select {
+  min-width: 62px;
+}
+
+.admin-panel.v2 .page-jump-form {
+  gap: 8px;
+}
+
+.admin-panel.v2 .page-jump-form input {
+  width: 54px;
+}
+
+.admin-panel.v2 .pagination button {
+  padding: 3px 8px;
+  border-radius: 7px;
 }
 
 .admin-panel.v2 .search-box input::placeholder {
@@ -5946,13 +6083,93 @@ body {
   text-align: left;
 }
 
+.patient-records-table {
+  height: clamp(460px, calc(100vh - 340px), 640px);
+  min-height: 460px;
+}
+
+.patient-records-page.fixed-table-page {
+  height: calc(100vh - 156px);
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+
+.patient-records-page.fixed-table-page .records-table {
+  flex: 1 1 auto;
+}
+
+.patient-records-page .records-footer,
+.patient-records-page .page-size-control,
+.patient-records-page .page-jump-form label,
+.patient-records-page .pagination button {
+  font-size: 12px;
+}
+
+.patient-records-page .pagination {
+  gap: 8px;
+}
+
+.patient-records-page .pagination-group {
+  padding: 6px 8px;
+  border-radius: 14px;
+}
+
+.patient-records-page .page-size-control,
+.patient-records-page .page-jump-form label {
+  gap: 6px;
+}
+
+.patient-records-page .page-size-control select,
+.patient-records-page .page-jump-form input,
+.patient-records-page .pagination button {
+  min-height: 26px;
+}
+
+.patient-records-page .page-size-control select,
+.patient-records-page .page-jump-form input {
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.patient-records-page .page-size-control select {
+  min-width: 62px;
+}
+
+.patient-records-page .page-jump-form {
+  gap: 8px;
+}
+
+.patient-records-page .page-jump-form input {
+  width: 54px;
+}
+
+.patient-records-page .pagination button {
+  padding: 3px 8px;
+  border-radius: 7px;
+}
+
 .patient-records-table .table-head,
 .patient-records-table .table-row {
   grid-template-columns: 132px minmax(220px, 1fr) 56px 56px 150px 92px 104px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.patient-records-table .table-row {
+  line-height: 1.25;
 }
 
 .patient-records-table .table-head {
   padding-right: 42px;
+}
+
+.patient-records-table .view {
+  min-width: 68px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
 }
 
 .admin-panel.v2 .records-actions .sorter select {

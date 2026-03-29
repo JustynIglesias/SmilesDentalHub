@@ -28,6 +28,8 @@ function Procedures() {
   const [tab, setTab] = useState('services')
   const [services, setServices] = useState([])
   const [legends, setLegends] = useState([])
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('')
+  const [legendSearchTerm, setLegendSearchTerm] = useState('')
   const [addServiceName, setAddServiceName] = useState('')
   const [addServicePrice, setAddServicePrice] = useState('')
   const [addConditionName, setAddConditionName] = useState('')
@@ -91,6 +93,20 @@ function Procedures() {
 
   const activeServices = useMemo(() => services.filter((item) => item.is_active), [services])
   const activeLegends = useMemo(() => legends.filter((item) => item.is_active), [legends])
+  const filteredServices = useMemo(() => {
+    const query = serviceSearchTerm.trim().toLowerCase()
+    if (!query) return activeServices
+    return activeServices.filter((item) => `${item.service_name || ''}`.toLowerCase().includes(query))
+  }, [activeServices, serviceSearchTerm])
+  const filteredLegends = useMemo(() => {
+    const query = legendSearchTerm.trim().toLowerCase()
+    if (!query) return activeLegends
+    return activeLegends.filter((item) => {
+      const condition = `${item.condition_name || ''}`.toLowerCase()
+      const code = `${item.code || ''}`.toLowerCase()
+      return condition.includes(query) || code.includes(query)
+    })
+  }, [activeLegends, legendSearchTerm])
   const normalizeServiceName = (value) => `${value ?? ''}`.trim().replace(/\s+/g, ' ').toLowerCase()
   const findServiceDuplicate = ({ name, excludeId = null }) => {
     const normalizedName = normalizeServiceName(name)
@@ -382,6 +398,21 @@ function Procedures() {
         <div className="grid-two procedures-grid">
           <div className="panel-card procedures-list-card">
             <h2>{tab === 'services' ? 'List of Services' : 'Dental Chart Legends'}</h2>
+            <div className="search-box procedures-search-box">
+              <span className="search-icon" aria-hidden />
+              <input
+                type="search"
+                value={tab === 'services' ? serviceSearchTerm : legendSearchTerm}
+                onChange={(event) => {
+                  if (tab === 'services') {
+                    setServiceSearchTerm(event.target.value)
+                    return
+                  }
+                  setLegendSearchTerm(event.target.value)
+                }}
+                placeholder={tab === 'services' ? 'Search by service name' : 'Search by tooth condition'}
+              />
+            </div>
             <div className="simple-table">
               <div className="simple-head">
                 {tab === 'services' ? (
@@ -399,7 +430,7 @@ function Procedures() {
                 )}
               </div>
               <div className="simple-body">
-                {(tab === 'services' ? activeServices : activeLegends).map((item) => (
+                {(tab === 'services' ? filteredServices : filteredLegends).map((item) => (
                   <div key={item.id} className="simple-row">
                     <span>{tab === 'services' ? item.service_name : sanitizeLegendCodeInput(item.code)}</span>
                     <span>{tab === 'services' ? formatPrice(item.price) : item.condition_name}</span>
@@ -409,7 +440,7 @@ function Procedures() {
                     </span>
                   </div>
                 ))}
-                {!loading && (tab === 'services' ? activeServices.length : activeLegends.length) === 0 ? <p>No entries yet.</p> : null}
+                {!loading && (tab === 'services' ? filteredServices.length : filteredLegends.length) === 0 ? <p>No entries found.</p> : null}
               </div>
             </div>
           </div>

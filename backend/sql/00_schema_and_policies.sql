@@ -958,6 +958,14 @@ to authenticated
 using (public.has_staff_role('admin'::public.staff_role))
 with check (public.has_staff_role('admin'::public.staff_role));
 
+drop policy if exists staff_profiles_update_own on public.staff_profiles;
+create policy staff_profiles_update_own
+on public.staff_profiles
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
 drop policy if exists patients_select_staff on public.patients;
 create policy patients_select_staff
 on public.patients

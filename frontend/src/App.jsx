@@ -114,7 +114,7 @@ function LoginRoute({
   )
 }
 
-function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser }) {
+function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser, onProfileChange }) {
   return (
     <div className="dashboard">
       <Sidebar onLogout={onLogout} navItems={navItems} />
@@ -126,7 +126,7 @@ function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser }) {
           <Route path="/add-patient" element={<AddPatient />} />
           <Route path="/procedure" element={<Procedures />} />
           <Route path="/logs" element={<PatientLogs />} />
-          <Route path="/settings" element={<Settings currentProfile={profile} currentSessionUser={sessionUser} />} />
+          <Route path="/settings" element={<Settings currentProfile={profile} currentSessionUser={sessionUser} onProfileChange={onProfileChange} />} />
           {role === 'admin' ? <Route path="/admin" element={<Admin currentProfile={profile} />} /> : <Route path="/admin" element={<Navigate to="/home" replace />} />}
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
@@ -873,7 +873,7 @@ function AppRoutes() {
           }
         />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/*" element={<ProtectedLayout onLogout={handleLogoutRequest} navItems={navItems} role={profile?.role} profile={profile} sessionUser={session?.user} />} />
+        <Route path="/*" element={<ProtectedLayout onLogout={handleLogoutRequest} navItems={navItems} role={profile?.role} profile={profile} sessionUser={session?.user} onProfileChange={setProfile} />} />
       </Routes>
 
       {isLogoutModalOpen ? (

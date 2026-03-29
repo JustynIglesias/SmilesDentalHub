@@ -92,6 +92,17 @@ const formatDateOnly = (value) => {
   })
 }
 
+const formatDateOnlyLong = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 const calculateAge = (birthDate) => {
   if (!birthDate) return '-'
   const dob = new Date(birthDate)
@@ -101,6 +112,20 @@ const calculateAge = (birthDate) => {
   const monthDelta = now.getMonth() - dob.getMonth()
   if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dob.getDate())) age -= 1
   return age < 0 ? '-' : String(age)
+}
+
+const normalizePhilippineMobile = (value = '') => `${value}`.replace(/\D/g, '').slice(0, 10)
+
+const toPhilippineLocalMobileInput = (value = '') => {
+  const digits = `${value || ''}`.replace(/\D/g, '')
+  if (digits.startsWith('63') && digits.length >= 12) return digits.slice(2, 12)
+  if (digits.startsWith('0') && digits.length >= 11) return digits.slice(1, 11)
+  return digits.slice(0, 10)
+}
+
+const formatPhilippineMobileDisplay = (value = '') => {
+  const localDigits = toPhilippineLocalMobileInput(value)
+  return localDigits ? `+63${localDigits}` : '-'
 }
 
 const buildFullName = ({ firstName, middleName, lastName, suffix }) => (
@@ -122,7 +147,7 @@ const getProfileNameParts = (profile) => {
   }
 }
 
-function Settings({ currentProfile, currentSessionUser }) {
+function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
   const [profileView, setProfileView] = useState(currentProfile ?? null)
   const [profileForm, setProfileForm] = useState(() => {
     const parsedName = getProfileNameParts(currentProfile)
@@ -132,7 +157,7 @@ function Settings({ currentProfile, currentSessionUser }) {
       lastName: parsedName.lastName,
       suffix: parsedName.suffix,
       birthDate: currentProfile?.birth_date || '',
-      mobileNumber: currentProfile?.mobile_number || '',
+      mobileNumber: toPhilippineLocalMobileInput(currentProfile?.mobile_number || ''),
       address: currentProfile?.address || '',
       username: currentProfile?.username || '',
     }
@@ -163,7 +188,7 @@ function Settings({ currentProfile, currentSessionUser }) {
       lastName: parsedName.lastName,
       suffix: parsedName.suffix,
       birthDate: currentProfile?.birth_date || '',
-      mobileNumber: currentProfile?.mobile_number || '',
+      mobileNumber: toPhilippineLocalMobileInput(currentProfile?.mobile_number || ''),
       address: currentProfile?.address || '',
       username: currentProfile?.username || '',
     })
@@ -198,7 +223,7 @@ function Settings({ currentProfile, currentSessionUser }) {
       lastName: parsedName.lastName,
       suffix: parsedName.suffix,
       birthDate: profileSource?.birth_date || '',
-      mobileNumber: profileSource?.mobile_number || '',
+      mobileNumber: toPhilippineLocalMobileInput(profileSource?.mobile_number || ''),
       address: profileSource?.address || '',
       username: profileSource?.username || '',
     })
@@ -214,7 +239,7 @@ function Settings({ currentProfile, currentSessionUser }) {
       lastName: parsedName.lastName,
       suffix: parsedName.suffix,
       birthDate: profileSource?.birth_date || '',
-      mobileNumber: profileSource?.mobile_number || '',
+      mobileNumber: toPhilippineLocalMobileInput(profileSource?.mobile_number || ''),
       address: profileSource?.address || '',
       username: profileSource?.username || '',
     })
@@ -228,13 +253,18 @@ function Settings({ currentProfile, currentSessionUser }) {
     const lastName = profileForm.lastName.trim()
     const suffix = profileForm.suffix.trim()
     const birthDate = profileForm.birthDate || null
-    const mobileNumber = profileForm.mobileNumber.trim()
+    const mobileNumber = normalizePhilippineMobile(profileForm.mobileNumber)
     const address = profileForm.address.trim()
     const username = profileForm.username.trim()
     const fullName = buildFullName({ firstName, middleName, lastName, suffix })
 
     if (!firstName || !lastName || !username) {
       setError('First name, last name, and username are required.')
+      return
+    }
+
+    if (mobileNumber && !/^9\d{9}$/.test(mobileNumber)) {
+      setError('Mobile number must be a valid Philippine number after +63, like 9762911478.')
       return
     }
 
@@ -255,7 +285,7 @@ function Settings({ currentProfile, currentSessionUser }) {
         last_name: lastName,
         suffix: suffix || null,
         birth_date: birthDate,
-        mobile_number: mobileNumber || null,
+        mobile_number: mobileNumber ? `+63${mobileNumber}` : null,
         address: address || null,
         username,
       })
@@ -270,6 +300,7 @@ function Settings({ currentProfile, currentSessionUser }) {
     }
 
     setProfileView(data)
+    onProfileChange?.(data)
     setIsEditingProfile(false)
     setIsSavingProfile(false)
   }
@@ -381,6 +412,7 @@ function Settings({ currentProfile, currentSessionUser }) {
       }
 
       setProfileView((previous) => ({ ...(previous || {}), email: trimmedPendingEmail }))
+      onProfileChange?.((previous) => ({ ...(previous || {}), email: trimmedPendingEmail }))
       setNewEmail('')
       setPendingEmailVerification('')
       setEmailVerificationCode('')
@@ -544,7 +576,7 @@ function Settings({ currentProfile, currentSessionUser }) {
 
                   <label>
                     Birthday
-                    <input type={isEditingProfile ? 'date' : 'text'} value={isEditingProfile ? profileForm.birthDate : formatDateOnly(profileSource?.birth_date)} readOnly={!isEditingProfile} onChange={(event) => setProfileForm((previous) => ({ ...previous, birthDate: event.target.value }))} />
+                    <input type={isEditingProfile ? 'date' : 'text'} value={isEditingProfile ? profileForm.birthDate : formatDateOnlyLong(profileSource?.birth_date)} readOnly={!isEditingProfile} onChange={(event) => setProfileForm((previous) => ({ ...previous, birthDate: event.target.value }))} />
                   </label>
 
                   <label>
@@ -554,7 +586,24 @@ function Settings({ currentProfile, currentSessionUser }) {
 
                   <label className="span-2">
                     Mobile Number
-                    <input type="text" value={isEditingProfile ? profileForm.mobileNumber : (profileSource?.mobile_number || '-')} readOnly={!isEditingProfile} onChange={(event) => setProfileForm((previous) => ({ ...previous, mobileNumber: event.target.value }))} />
+                    {isEditingProfile ? (
+                      <div className="ph-mobile-field settings-ph-mobile-field">
+                        <span className="ph-mobile-prefix">+63</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="9762911478"
+                          maxLength={10}
+                          value={profileForm.mobileNumber}
+                          onChange={(event) => setProfileForm((previous) => ({
+                            ...previous,
+                            mobileNumber: normalizePhilippineMobile(event.target.value),
+                          }))}
+                        />
+                      </div>
+                    ) : (
+                      <input type="text" value={formatPhilippineMobileDisplay(profileSource?.mobile_number || '')} readOnly />
+                    )}
                   </label>
 
                   <label className="span-2">

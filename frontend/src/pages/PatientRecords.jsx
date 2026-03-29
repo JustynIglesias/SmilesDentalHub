@@ -226,7 +226,7 @@ function PatientRecords() {
         <h1>Patient Records</h1>
       </header>
 
-      <section className="records fixed-table-page">
+      <section className="records fixed-table-page patient-records-page">
         <div className="records-header">
           <div>
             <h2>Records</h2>

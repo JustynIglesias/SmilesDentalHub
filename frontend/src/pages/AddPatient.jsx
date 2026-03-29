@@ -902,7 +902,7 @@ function AddPatient() {
               </label>
               <label>
                 <span className="required-label">Age<span className="required-asterisk">*</span></span>
-                <input className={invalidPatientFields.age ? 'input-error' : ''} type="text" required value={patientInfo.age} readOnly />
+                <input className={`is-locked ${invalidPatientFields.age ? 'input-error' : ''}`.trim()} type="text" required value={patientInfo.age} readOnly />
               </label>
               <label>
                 Nickname

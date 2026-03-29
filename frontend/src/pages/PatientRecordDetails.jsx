@@ -207,6 +207,17 @@ const formatDateOnly = (value) => {
   return `${MONTH_ABBR[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
 }
 
+const formatDateOnlyLong = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 const formatDateInputDisplay = (isoDate) => {
   const raw = `${isoDate || ''}`.trim()
   if (!raw) return ''
@@ -249,6 +260,28 @@ const formatDateTime = (value) => {
     minute: '2-digit',
   })
   return `${formatDateOnly(date)} ${time}`
+}
+
+const formatDateTimeLong = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const formatPhilippineMobileDisplay = (value = '') => {
+  const digits = `${value || ''}`.replace(/\D/g, '')
+  if (!digits) return '-'
+  if (digits.startsWith('63') && digits.length >= 12) return `+${digits.slice(0, 12)}`
+  if (digits.startsWith('0') && digits.length >= 11) return `+63${digits.slice(1, 11)}`
+  if (digits.startsWith('9') && digits.length >= 10) return `+63${digits.slice(0, 10)}`
+  return value || '-'
 }
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('en-PH', {
@@ -1715,7 +1748,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 
     const serviceRowsHtml = serviceEntries.length > 0
       ? serviceEntries.map((row) => (
-        `<tr><td>${escapeHtml(formatDateOnly(row.date))}</td><td>${escapeHtml(row.service)}</td><td>${escapeHtml(row.quantity)}</td><td>${escapeHtml(formatCurrency(row.amount))}</td><td>${escapeHtml(formatCurrency(row.discount))}</td><td>${escapeHtml(formatCurrency(row.total))}</td></tr>`
+        `<tr><td>${escapeHtml(formatDateOnlyLong(row.date))}</td><td>${escapeHtml(row.service)}</td><td>${escapeHtml(row.quantity)}</td><td>${escapeHtml(formatCurrency(row.amount))}</td><td>${escapeHtml(formatCurrency(row.discount))}</td><td>${escapeHtml(formatCurrency(row.total))}</td></tr>`
       )).join('')
       : '<tr><td colspan="6">No service records yet.</td></tr>'
 
@@ -1755,7 +1788,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 </head>
 <body>
   <h1>Patient Record Export</h1>
-  <div class="meta">Generated on ${escapeHtml(formatDateTime(new Date().toISOString()))}</div>
+  <div class="meta">Generated on ${escapeHtml(formatDateTimeLong(new Date().toISOString()))}</div>
   <div class="meta">Patient ID: <strong>${escapeHtml(patientCode)}</strong></div>
 
   <h2>Patient Information</h2>
@@ -1763,15 +1796,15 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     <div class="field"><strong>Name:</strong> ${escapeHtml(`${patient.lastName}, ${patient.firstName}`)}</div>
     <div class="field"><strong>Sex:</strong> ${escapeHtml(patient.sex || '-')}</div>
     <div class="field"><strong>Age:</strong> ${escapeHtml(calculateAge(patient.birthdate))}</div>
-    <div class="field"><strong>Birthdate:</strong> ${escapeHtml(formatDateOnly(patient.birthdate))}</div>
-    <div class="field"><strong>Mobile:</strong> ${escapeHtml(patient.mobile || '-')}</div>
+    <div class="field"><strong>Birthdate:</strong> ${escapeHtml(formatDateOnlyLong(patient.birthdate))}</div>
+    <div class="field"><strong>Mobile:</strong> ${escapeHtml(formatPhilippineMobileDisplay(patient.mobile))}</div>
     <div class="field"><strong>Email:</strong> ${escapeHtml(patient.email || '-')}</div>
     <div class="field"><strong>Address:</strong> ${escapeHtml(patient.address || '-')}</div>
     <div class="field"><strong>Civil Status:</strong> ${escapeHtml(patient.civilStatus || '-')}</div>
     <div class="field"><strong>Occupation:</strong> ${escapeHtml(patient.occupation || '-')}</div>
     <div class="field"><strong>Office Address:</strong> ${escapeHtml(patient.officeAddress || '-')}</div>
     <div class="field"><strong>Guardian:</strong> ${escapeHtml(patient.guardianName || '-')}</div>
-    <div class="field"><strong>Guardian Mobile:</strong> ${escapeHtml(patient.guardianMobileNumber || '-')}</div>
+    <div class="field"><strong>Guardian Mobile:</strong> ${escapeHtml(formatPhilippineMobileDisplay(patient.guardianMobileNumber))}</div>
     <div class="field"><strong>Health Conditions:</strong> ${escapeHtml(healthChecked)}</div>
     <div class="field"><strong>Allergens:</strong> ${escapeHtml(allergenChecked)}</div>
   </div>
@@ -1785,7 +1818,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     <div class="field"><strong>Tooth Conditions:</strong> ${escapeHtml(toothEntries)}</div>
     <div class="field"><strong>Prescriptions:</strong> ${escapeHtml(dentalRecord.prescriptions || '-')}</div>
     <div class="field"><strong>Notes:</strong> ${escapeHtml(dentalRecord.notes || '-')}</div>
-    <div class="field"><strong>Last Updated:</strong> ${escapeHtml(formatDateTime(dentalRecordMeta.updatedAt))}</div>
+    <div class="field"><strong>Last Updated:</strong> ${escapeHtml(formatDateTimeLong(dentalRecordMeta.updatedAt))}</div>
     <div class="field"><strong>Updated By:</strong> ${escapeHtml(dentalRecordMeta.updatedByName || '-')}</div>
   </div>
   <h3>Dental Charts</h3>
@@ -1807,7 +1840,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   <h2>Dental and Medical History</h2>
   <div class="small-grid">
     <div><strong>Previous Dentist:</strong> ${escapeHtml(dentalHistory.previous || '-')}</div>
-    <div><strong>Last Dental Exam:</strong> ${escapeHtml(formatDateOnly(dentalHistory.lastExam))}</div>
+    <div><strong>Last Dental Exam:</strong> ${escapeHtml(formatDateOnlyLong(dentalHistory.lastExam))}</div>
     <div><strong>Consultation Reason:</strong> ${escapeHtml(dentalHistory.reason || '-')}</div>
     <div><strong>Physician:</strong> ${escapeHtml(medicalHistory.physician || '-')}</div>
     <div><strong>Physician Specialty:</strong> ${escapeHtml(medicalHistory.specialty || '-')}</div>
@@ -1975,7 +2008,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                     <div className="pr-detail-item"><span className="pr-detail-label">Sex</span><span className="pr-detail-value">{patient.sex || '-'}</span></div>
                     <div className="pr-detail-item"><span className="pr-detail-label">Age</span><span className="pr-detail-value">{calculateAge(patient.birthdate)}</span></div>
                     <div className="pr-detail-item"><span className="pr-detail-label">Civil Status</span><span className="pr-detail-value">{patient.civilStatus || '-'}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Birthdate</span><span className="pr-detail-value">{formatDateOnly(patient.birthdate)}</span></div>
+                    <div className="pr-detail-item"><span className="pr-detail-label">Birthdate</span><span className="pr-detail-value">{formatDateOnlyLong(patient.birthdate)}</span></div>
                     <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Mobile Number</span><span className="pr-detail-value">{patient.mobile || '-'}</span></div>
                     <div className="pr-detail-item"><span className="pr-detail-label">Occupation</span><span className="pr-detail-value">{patient.occupation || '-'}</span></div>
                     <div className="pr-detail-item"><span className="pr-detail-label">Office Address</span><span className="pr-detail-value">{patient.officeAddress || '-'}</span></div>
@@ -2014,7 +2047,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                     <h3>Dental History</h3>
                     <button type="button" className="mini-edit-btn" onClick={() => openPatientModal('dental-history')}>&#9998;</button>
                   </div>
-                  <div className="two-field-line"><p><strong>Name of Previous Dentist</strong><span>{dentalHistory.previous || '-'}</span></p><p><strong>Date of last exam</strong><span>{formatDateOnly(dentalHistory.lastExam)}</span></p></div>
+                  <div className="two-field-line"><p><strong>Name of Previous Dentist</strong><span>{dentalHistory.previous || '-'}</span></p><p><strong>Date of last exam</strong><span>{formatDateOnlyLong(dentalHistory.lastExam)}</span></p></div>
                   <p className="single-field-line"><strong>What is the reason for Dental Consultation</strong><span>{dentalHistory.reason || '-'}</span></p>
                   <div className="history-answers">
                     {DQ.map((question, index) => {
@@ -2082,7 +2115,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
               </article>
 
               <article className="pr-card pr-authorization"><h3>Authorization and Release</h3><p>I certify that I have read and understood the questionnaire and authorize records release. Current status: <strong>{patient.authorizationAccepted ? 'Accepted' : 'Not accepted'}</strong></p></article>
-              <div className="pr-meta-row"><span>Date of last changes: {formatDateTime(patient.updatedAt || patient.createdAt)}</span><span>Last changes by: {lastChangedBy}</span></div>
+              <div className="pr-meta-row"><span>Date of last changes: {formatDateTimeLong(patient.updatedAt || patient.createdAt)}</span><span>Last changes by: {lastChangedBy}</span></div>
             </>
           ) : null}
         </div>
@@ -2099,7 +2132,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
               <div className="pr-dental-chart">{renderDentalSection(DENTAL_CHART_IMAGES[0], 1, 'chart-1', TOOTH_X_POSITIONS_BY_CHART.chart1, dentalRecord.toothMap, () => {}, true)}<div className="pr-dental-divider" />{renderDentalSection(DENTAL_CHART_IMAGES[1], 17, 'chart-2', TOOTH_X_POSITIONS_BY_CHART.chart2, dentalRecord.toothMap, () => {}, true)}</div>
             </section>
             <div className="pr-notes-grid"><label>Dental Prescriptions<textarea readOnly value={dentalRecord.prescriptions} /></label><label>Dental Notes<textarea readOnly value={dentalRecord.notes} /></label></div>
-            <div className="pr-meta-row"><span>Date of last changes: {formatDateTime(dentalRecordMeta.updatedAt)}</span><span>Last changes by: {dentalRecordMeta.updatedByName}</span></div>
+            <div className="pr-meta-row"><span>Date of last changes: {formatDateTimeLong(dentalRecordMeta.updatedAt)}</span><span>Last changes by: {dentalRecordMeta.updatedByName}</span></div>
           </article>
         ) : null}
 

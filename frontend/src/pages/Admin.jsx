@@ -1152,6 +1152,7 @@ function Admin() {
                 </div>
               </div>
               <div className="records-actions">
+                <button type="button" className="primary" onClick={() => setShowAddUser(true)}>Add User</button>
                 <div className="sorter">
                   <label htmlFor="admin-users-sort">Sort by:</label>
                   <select
@@ -1199,7 +1200,6 @@ function Admin() {
                     />
                   </button>
                 </div>
-                <button type="button" className="primary" onClick={() => setShowAddUser(true)}>Add User</button>
               </div>
             </div>
 
@@ -1600,17 +1600,17 @@ function Admin() {
           </div>
           <div className="pr-modal-body">
             <div className="history-top-grid">
-              <label>Last Name<input type="text" value={userForm.last_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, last_name: toTitleCase(e.target.value) }))} /></label>
-              <label>First Name<input type="text" value={userForm.first_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, first_name: toTitleCase(e.target.value) }))} /></label>
-              <label>Middle Name<input type="text" value={userForm.middle_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, middle_name: toTitleCase(e.target.value) }))} /></label>
-              <label>Suffix<input type="text" value={userForm.suffix} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, suffix: toTitleCase(e.target.value) }))} /></label>
-              <label>Email<input type="email" value={userForm.email} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, email: e.target.value }))} /></label>
-              <label>Username<input type="text" value={userForm.username} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} /></label>
-              <label>Birthday<input type={isEditingUser ? 'date' : 'text'} value={isEditingUser ? userForm.birth_date : formatDateOnly(userForm.birth_date)} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, birth_date: e.target.value }))} /></label>
-              <label>Age<input type="text" value={calculateAge(userForm.birth_date)} readOnly /></label>
-              <label className="span-2">Mobile Number<input type="text" value={isEditingUser ? userForm.mobile_number : (userForm.mobile_number || '-')} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, mobile_number: e.target.value }))} /></label>
-              <label className="span-2">Address<input type="text" value={isEditingUser ? userForm.address : (userForm.address || '-')} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, address: e.target.value }))} /></label>
-              <label>Role<select value={userForm.role} disabled={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, role: e.target.value }))}>{ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>
+              <label>Last Name<input className={isEditingUser ? 'is-editable' : ''} type="text" value={userForm.last_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, last_name: toTitleCase(e.target.value) }))} /></label>
+              <label>First Name<input className={isEditingUser ? 'is-editable' : ''} type="text" value={userForm.first_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, first_name: toTitleCase(e.target.value) }))} /></label>
+              <label>Middle Name<input className={isEditingUser ? 'is-editable' : ''} type="text" value={userForm.middle_name} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, middle_name: toTitleCase(e.target.value) }))} /></label>
+              <label>Suffix<input className={isEditingUser ? 'is-editable' : ''} type="text" value={userForm.suffix} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, suffix: toTitleCase(e.target.value) }))} /></label>
+              <label>Email<input className={isEditingUser ? 'is-locked' : ''} type="email" value={userForm.email} readOnly onChange={(e) => setUserForm((p) => ({ ...p, email: e.target.value }))} /></label>
+              <label>Username<input className={isEditingUser ? 'is-editable' : ''} type="text" value={userForm.username} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} /></label>
+              <label>Birthday<input className={isEditingUser ? 'is-editable' : ''} type={isEditingUser ? 'date' : 'text'} value={isEditingUser ? userForm.birth_date : formatDateOnly(userForm.birth_date)} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, birth_date: e.target.value }))} /></label>
+              <label>Age<input className={isEditingUser ? 'is-locked' : ''} type="text" value={calculateAge(userForm.birth_date)} readOnly /></label>
+              <label className="span-2">Mobile Number<input className={isEditingUser ? 'is-editable' : ''} type="text" value={isEditingUser ? userForm.mobile_number : (userForm.mobile_number || '-')} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, mobile_number: e.target.value }))} /></label>
+              <label className="span-2">Address<input className={isEditingUser ? 'is-editable' : ''} type="text" value={isEditingUser ? userForm.address : (userForm.address || '-')} readOnly={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, address: e.target.value }))} /></label>
+              <label>Role<select className={isEditingUser ? 'is-editable' : ''} value={userForm.role} disabled={!isEditingUser} onChange={(e) => setUserForm((p) => ({ ...p, role: e.target.value }))}>{ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>
             </div>
             {isEditingUser ? (
               <div className="modal-actions admin-user-modal-actions">
