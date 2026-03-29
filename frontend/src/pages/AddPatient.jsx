@@ -193,6 +193,13 @@ const normalizeBirthdateTyping = (value) => {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
 }
 
+const normalizePhilippineLocalMobile = (value = '') => `${value}`.replace(/\D/g, '').slice(0, 10)
+
+const formatPhilippineE164 = (value = '') => {
+  const digits = normalizePhilippineLocalMobile(value)
+  return digits ? `+63${digits}` : null
+}
+
 const normalizeObject = (value, fallback) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...fallback }
   return { ...fallback, ...value }
@@ -423,8 +430,8 @@ function AddPatient() {
       if (`${patientInfo[field]}`.trim() === '') nextInvalidFields[field] = true
     })
     const hasMissingRequiredField = fieldsToValidate.some((field) => nextInvalidFields[field])
-    const hasInvalidMobile = !/^\d{11}$/.test(`${patientInfo.mobileNumber || ''}`)
-    const hasInvalidGuardianMobile = isMinor && !/^\d{11}$/.test(`${patientInfo.guardianMobileNumber || ''}`)
+    const hasInvalidMobile = !/^9\d{9}$/.test(`${patientInfo.mobileNumber || ''}`)
+    const hasInvalidGuardianMobile = isMinor && !/^9\d{9}$/.test(`${patientInfo.guardianMobileNumber || ''}`)
     const hasInvalidBirthdateAge = Boolean(patientInfo.birthdate && patientInfo.birthdate > maxBirthdateIso)
 
     if (hasInvalidMobile) nextInvalidFields.mobileNumber = true
@@ -438,12 +445,12 @@ function AddPatient() {
     }
 
     if (hasInvalidMobile) {
-      setValidationMessage('Mobile number must be exactly 11 numeric digits.')
+      setValidationMessage('Mobile number must be a valid Philippine number after +63, like 9762911478.')
       return false
     }
 
     if (hasInvalidGuardianMobile) {
-      setValidationMessage('Guardian mobile number must be exactly 11 numeric digits.')
+      setValidationMessage('Guardian mobile number must be a valid Philippine number after +63, like 9762911478.')
       return false
     }
 
@@ -657,7 +664,7 @@ function AddPatient() {
       suffix: toTitleCase(patientInfo.suffix.trim()) || null,
       sex: normalizeSex(patientInfo.sex),
       birth_date: patientInfo.birthdate || null,
-      phone: patientInfo.mobileNumber.trim() || null,
+      phone: formatPhilippineE164(patientInfo.mobileNumber),
       email: patientInfo.email.trim() || null,
       address: toTitleCase(patientInfo.currentAddress.trim()) || null,
       nickname: toTitleCase(patientInfo.nickname.trim()) || null,
@@ -665,9 +672,9 @@ function AddPatient() {
       occupation: toTitleCase(patientInfo.occupation.trim()) || null,
       office_address: toTitleCase(patientInfo.officeAddress.trim()) || null,
       emergency_contact_name: toTitleCase((isMinor ? patientInfo.guardianName : '').trim()) || null,
-      emergency_contact_phone: (isMinor ? patientInfo.guardianMobileNumber : '').trim() || null,
+      emergency_contact_phone: isMinor ? formatPhilippineE164(patientInfo.guardianMobileNumber) : null,
       guardian_name: toTitleCase((isMinor ? patientInfo.guardianName : '').trim()) || null,
-      guardian_mobile_number: (isMinor ? patientInfo.guardianMobileNumber : '').trim() || null,
+      guardian_mobile_number: isMinor ? formatPhilippineE164(patientInfo.guardianMobileNumber) : null,
       guardian_occupation: toTitleCase((isMinor ? patientInfo.guardianOccupation : '').trim()) || null,
       guardian_office_address: toTitleCase((isMinor ? patientInfo.guardianOfficeAddress : '').trim()) || null,
       health_conditions: checkedConditions,
@@ -924,24 +931,27 @@ function AddPatient() {
               </label>
               <label>
                 <span className="required-label">Mobile Number<span className="required-asterisk">*</span></span>
-                <input
-                  className={invalidPatientFields.mobileNumber ? 'input-error' : ''}
-                  type="text"
-                  required
-                  inputMode="numeric"
-                  placeholder="09XX XXX XXXX"
-                  maxLength={11}
-                  pattern="[0-9]{11}"
-                  value={patientInfo.mobileNumber}
-                  onChange={(e) => {
-                    const rawValue = e.target.value
-                    if (/[^0-9]/.test(rawValue)) {
-                      setValidationMessage('Only numeric digits are allowed for mobile number.')
-                      return
-                    }
-                    setPatientField('mobileNumber', rawValue.slice(0, 11))
-                  }}
-                />
+                <div className={`ph-mobile-field ${invalidPatientFields.mobileNumber ? 'input-error' : ''}`}>
+                  <span className="ph-mobile-prefix">+63</span>
+                  <input
+                    className={invalidPatientFields.mobileNumber ? 'input-error' : ''}
+                    type="text"
+                    required
+                    inputMode="numeric"
+                    placeholder="9762911478"
+                    maxLength={10}
+                    pattern="9[0-9]{9}"
+                    value={patientInfo.mobileNumber}
+                    onChange={(e) => {
+                      const rawValue = e.target.value
+                      if (/[^0-9]/.test(rawValue)) {
+                        setValidationMessage('Only numeric digits are allowed for mobile number.')
+                        return
+                      }
+                      setPatientField('mobileNumber', normalizePhilippineLocalMobile(rawValue))
+                    }}
+                  />
+                </div>
               </label>
               <label>
                 <span className="required-label">Occupation<span className="required-asterisk">*</span></span>
@@ -963,24 +973,27 @@ function AddPatient() {
                   </label>
                   <label className="span-2">
                     <span className="required-label">Mobile Number<span className="required-asterisk">*</span></span>
-                    <input
-                      className={invalidPatientFields.guardianMobileNumber ? 'input-error' : ''}
-                      type="text"
-                      required
-                      inputMode="numeric"
-                      placeholder="09XX XXX XXXX"
-                      maxLength={11}
-                      pattern="[0-9]{11}"
-                      value={patientInfo.guardianMobileNumber}
-                      onChange={(e) => {
-                        const rawValue = e.target.value
-                        if (/[^0-9]/.test(rawValue)) {
-                          setValidationMessage('Only numeric digits are allowed for mobile number.')
-                          return
-                        }
-                        setPatientField('guardianMobileNumber', rawValue.slice(0, 11))
-                      }}
-                    />
+                    <div className={`ph-mobile-field ${invalidPatientFields.guardianMobileNumber ? 'input-error' : ''}`}>
+                      <span className="ph-mobile-prefix">+63</span>
+                      <input
+                        className={invalidPatientFields.guardianMobileNumber ? 'input-error' : ''}
+                        type="text"
+                        required
+                        inputMode="numeric"
+                        placeholder="9762911478"
+                        maxLength={10}
+                        pattern="9[0-9]{9}"
+                        value={patientInfo.guardianMobileNumber}
+                        onChange={(e) => {
+                          const rawValue = e.target.value
+                          if (/[^0-9]/.test(rawValue)) {
+                            setValidationMessage('Only numeric digits are allowed for mobile number.')
+                            return
+                          }
+                          setPatientField('guardianMobileNumber', normalizePhilippineLocalMobile(rawValue))
+                        }}
+                      />
+                    </div>
                   </label>
                   <label>
                     <span className="required-label">Occupation<span className="required-asterisk">*</span></span>

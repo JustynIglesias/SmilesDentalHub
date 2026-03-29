@@ -8,6 +8,7 @@ const { isSmtpConfigured, sendEmailChangeVerificationEmail, sendWelcomeTestEmail
 
 const router = express.Router();
 const emailChangeVerificationStore = new Map();
+const staffOnboardingVerificationStore = new Map();
 const EMAIL_CHANGE_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
 
@@ -16,6 +17,11 @@ function normalizeString(value) {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+
+function isPlaceholderStaffEmail(email) {
+  const normalized = normalizeString(email).toLowerCase();
+  return normalized.endsWith('@smilesdentalhub.local') || normalized.endsWith('@dent22.local');
+}
 
 function createSixDigitCode() {
   return crypto.randomInt(100000, 1000000).toString();
@@ -74,6 +80,50 @@ async function requireAdminRequester(accessToken) {
       errorResponse: {
         status: 403,
         payload: { error: 'Forbidden: admin role required.' },
+      },
+    };
+  }
+
+  return {
+    requesterUserData,
+    requesterProfile,
+    serviceClient,
+  };
+}
+
+async function requireAuthenticatedRequester(accessToken) {
+  const requesterClient = createSupabaseClient({ accessToken });
+  const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+  if (requesterUserError || !requesterUserData?.user?.id) {
+    return {
+      errorResponse: {
+        status: 401,
+        payload: requesterUserError || { message: 'Unable to resolve authenticated user.' },
+      },
+    };
+  }
+
+  const serviceClient = createSupabaseClient({ useServiceRole: true });
+  const { data: requesterProfile, error: requesterProfileError } = await serviceClient
+    .from('staff_profiles')
+    .select('user_id, full_name, email, username, role, is_active, first_name, middle_name, last_name, suffix, birth_date, mobile_number, address')
+    .eq('user_id', requesterUserData.user.id)
+    .maybeSingle();
+
+  if (requesterProfileError) {
+    return {
+      errorResponse: {
+        status: 403,
+        payload: requesterProfileError,
+      },
+    };
+  }
+
+  if (!requesterProfile || !requesterProfile.is_active) {
+    return {
+      errorResponse: {
+        status: 403,
+        payload: { error: 'Account is not provisioned for system access.' },
       },
     };
   }
@@ -402,6 +452,144 @@ router.post('/verify-email-change-code', requireAccessToken, async (req, res) =>
 
     return res.json({
       message: 'Email updated successfully.',
+      email: nextEmail,
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
+router.post('/start-staff-onboarding', requireAccessToken, async (req, res) => {
+  try {
+    const nextEmail = normalizeString(req.body?.email).toLowerCase();
+    const birthDate = normalizeString(req.body?.birthDate) || null;
+    const mobileNumber = normalizeString(req.body?.mobileNumber);
+    const address = normalizeString(req.body?.address);
+    const birthDateValue = birthDate ? new Date(`${birthDate}T00:00:00`) : null;
+    const today = new Date();
+    const minimumAdultDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+
+    if (!nextEmail || !birthDate || !mobileNumber || !address) {
+      return res.status(400).json({ error: 'email, birthDate, mobileNumber, and address are required.' });
+    }
+    if (!EMAIL_PATTERN.test(nextEmail)) {
+      return res.status(400).json({ error: 'Invalid email format.' });
+    }
+    if (!(birthDateValue instanceof Date) || Number.isNaN(birthDateValue.getTime())) {
+      return res.status(400).json({ error: 'Invalid birth date.' });
+    }
+    if (birthDateValue > minimumAdultDate) {
+      return res.status(400).json({ error: 'You must be at least 18 years old.' });
+    }
+    if (!/^\+639\d{9}$/.test(mobileNumber)) {
+      return res.status(400).json({ error: 'Enter a valid Philippine mobile number.' });
+    }
+    if (isPlaceholderStaffEmail(nextEmail)) {
+      return res.status(400).json({ error: 'Please enter your real email address.' });
+    }
+    if (!isSmtpConfigured()) {
+      return res.status(500).json({ error: 'SMTP is not configured for verification emails.' });
+    }
+
+    const requesterContext = await requireAuthenticatedRequester(req.accessToken);
+    if (requesterContext.errorResponse) {
+      const { status, payload } = requesterContext.errorResponse;
+      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
+    }
+
+    const { requesterUserData, requesterProfile } = requesterContext;
+
+    const code = createSixDigitCode();
+    const expiresAt = Date.now() + EMAIL_CHANGE_CODE_EXPIRY_MS;
+
+    staffOnboardingVerificationStore.set(requesterUserData.user.id, {
+      code,
+      email: nextEmail,
+      birthDate,
+      mobileNumber,
+      address,
+      expiresAt,
+      attempts: 0,
+    });
+
+    await sendEmailChangeVerificationEmail({
+      toEmail: nextEmail,
+      code,
+      requestedBy: requesterProfile.full_name || requesterUserData.user.email || 'Smiles Dental Hub',
+      expiresInMinutes: Math.round(EMAIL_CHANGE_CODE_EXPIRY_MS / 60000),
+    });
+
+    return res.json({
+      message: 'Verification code sent to email.',
+      email: nextEmail,
+      expiresInMinutes: Math.round(EMAIL_CHANGE_CODE_EXPIRY_MS / 60000),
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
+router.post('/verify-staff-onboarding', requireAccessToken, async (req, res) => {
+  try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for onboarding verification.' });
+    }
+
+    const nextEmail = normalizeString(req.body?.email).toLowerCase();
+    const code = normalizeString(req.body?.code);
+
+    if (!nextEmail || !code) {
+      return res.status(400).json({ error: 'email and code are required.' });
+    }
+
+    const requesterContext = await requireAuthenticatedRequester(req.accessToken);
+    if (requesterContext.errorResponse) {
+      const { status, payload } = requesterContext.errorResponse;
+      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
+    }
+
+    const { requesterUserData, serviceClient } = requesterContext;
+    const storedVerification = staffOnboardingVerificationStore.get(requesterUserData.user.id);
+
+    if (!storedVerification) {
+      return res.status(400).json({ error: 'No pending onboarding verification found.' });
+    }
+    if (storedVerification.expiresAt < Date.now()) {
+      staffOnboardingVerificationStore.delete(requesterUserData.user.id);
+      return res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
+    }
+    if (storedVerification.email !== nextEmail) {
+      return res.status(400).json({ error: 'The email does not match the pending verification request.' });
+    }
+    if (storedVerification.attempts >= EMAIL_CHANGE_MAX_ATTEMPTS) {
+      staffOnboardingVerificationStore.delete(requesterUserData.user.id);
+      return res.status(400).json({ error: 'Too many invalid attempts. Please request a new code.' });
+    }
+    if (storedVerification.code !== code) {
+      storedVerification.attempts += 1;
+      staffOnboardingVerificationStore.set(requesterUserData.user.id, storedVerification);
+      return res.status(400).json({ error: 'Invalid verification code.' });
+    }
+
+    await updateEmailForUser({
+      userId: requesterUserData.user.id,
+      email: nextEmail,
+    });
+
+    const { error: profileUpdateError } = await serviceClient
+      .from('staff_profiles')
+      .update({
+        birth_date: storedVerification.birthDate,
+        mobile_number: storedVerification.mobileNumber,
+        address: storedVerification.address,
+      })
+      .eq('user_id', requesterUserData.user.id);
+    if (profileUpdateError) return sendSupabaseError(res, profileUpdateError);
+
+    staffOnboardingVerificationStore.delete(requesterUserData.user.id);
+
+    return res.json({
+      message: 'Staff onboarding completed successfully.',
       email: nextEmail,
     });
   } catch (error) {

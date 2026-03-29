@@ -843,6 +843,7 @@ values
   ('add-patient', 'Add Patient', '/add-patient', 30),
   ('procedure', 'Procedure', '/procedure', 40),
   ('logs', 'Patient Logs', '/logs', 50),
+  ('settings', 'Settings', '/settings', 80),
   ('admin', 'Admin', '/admin', 90)
 on conflict (item_key) do update
 set
@@ -863,16 +864,19 @@ from (
     ('receptionist', 'add-patient'),
     ('receptionist', 'procedure'),
     ('receptionist', 'logs'),
+    ('receptionist', 'settings'),
     ('associate_dentist', 'home'),
     ('associate_dentist', 'records'),
     ('associate_dentist', 'add-patient'),
     ('associate_dentist', 'procedure'),
     ('associate_dentist', 'logs'),
+    ('associate_dentist', 'settings'),
     ('admin', 'home'),
     ('admin', 'records'),
     ('admin', 'add-patient'),
     ('admin', 'procedure'),
     ('admin', 'logs'),
+    ('admin', 'settings'),
     ('admin', 'admin')
 ) as v(role, item_key)
 on conflict do nothing;

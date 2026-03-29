@@ -196,10 +196,14 @@ function Sidebar({ onLogout, navItems }) {
       {guardState.isOpen ? (
         <>
           <div className="modal-backdrop" onClick={closeGuardModal} />
-          <section className="nav-password-modal" role="dialog" aria-modal="true" aria-labelledby="nav-password-title">
-            <div className="nav-password-modal-head" />
-            <div className="nav-password-modal-body">
-              <h3 id="nav-password-title">Restricted Navigation</h3>
+          <section className="pr-modal nav-password-modal" role="dialog" aria-modal="true" aria-labelledby="nav-password-title">
+            <div className="pr-modal-head nav-password-modal-head">
+              <h2 id="nav-password-title">Restricted Navigation</h2>
+              <button type="button" onClick={closeGuardModal} aria-label="Close restricted navigation dialog">
+                x
+              </button>
+            </div>
+            <div className="pr-modal-body nav-password-modal-body">
               <p>
                 Add Patient is open for customer input only. Enter your password to switch tabs.
               </p>
@@ -254,7 +258,7 @@ function Sidebar({ onLogout, navItems }) {
                 </button>
               </div>
               {guardState.error ? <p className="nav-password-error">{guardState.error}</p> : null}
-              <div className="nav-password-actions">
+              <div className="modal-actions nav-password-actions">
                 <button type="button" className="danger-btn" onClick={closeGuardModal} disabled={guardState.isChecking}>Cancel</button>
                 <button type="button" className="success-btn" onClick={() => { void continueNavigation() }} disabled={guardState.isChecking}>
                   {guardState.isChecking ? 'Verifying...' : 'Continue'}

@@ -15,17 +15,47 @@ import Settings from './pages/Settings'
 import { isAccessTokenExpired, missingSupabaseEnv, supabase } from './lib/supabaseClient'
 
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
-const SETTINGS_NAV_ITEM = {
-  id: 'settings',
-  label: 'Settings',
-  path: '/settings',
+const PLACEHOLDER_EMAIL_DOMAINS = ['@smilesdentalhub.local', '@dent22.local']
+
+const isPlaceholderStaffEmail = (email = '') => {
+  const normalized = `${email || ''}`.trim().toLowerCase()
+  return PLACEHOLDER_EMAIL_DOMAINS.some((domain) => normalized.endsWith(domain))
 }
 
-const appendSettingsNavItem = (items = []) => {
-  if (items.some((item) => item.path === SETTINGS_NAV_ITEM.path || item.id === SETTINGS_NAV_ITEM.id)) {
-    return items
-  }
-  return [...items, SETTINGS_NAV_ITEM]
+const requiresStaffOnboarding = (profile) => {
+  if (!profile?.is_active) return false
+  return (
+    isPlaceholderStaffEmail(profile?.email) ||
+    !`${profile?.birth_date || ''}`.trim() ||
+    !`${profile?.mobile_number || ''}`.trim() ||
+    !`${profile?.address || ''}`.trim()
+  )
+}
+
+const calculateAgeFromDate = (birthDate) => {
+  if (!birthDate) return -1
+  const dob = new Date(birthDate)
+  if (Number.isNaN(dob.getTime())) return -1
+  const now = new Date()
+  let age = now.getFullYear() - dob.getFullYear()
+  const monthDelta = now.getMonth() - dob.getMonth()
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dob.getDate())) age -= 1
+  return age
+}
+
+const normalizePhilippineMobile = (value = '') => `${value}`.replace(/\D/g, '').slice(0, 10)
+
+const toPhilippineLocalMobileInput = (value = '') => {
+  const digits = `${value || ''}`.replace(/\D/g, '')
+  if (digits.startsWith('63') && digits.length >= 12) return digits.slice(2, 12)
+  if (digits.startsWith('0') && digits.length >= 11) return digits.slice(1, 11)
+  return digits.slice(0, 10)
+}
+
+const getAdultBirthDateMax = () => {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() - 18)
+  return date.toISOString().split('T')[0]
 }
 
 function LoginRoute({
@@ -126,6 +156,18 @@ function AppRoutes() {
   const [forgotAccessToken, setForgotAccessToken] = useState('')
   const [forgotRefreshToken, setForgotRefreshToken] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [staffOnboardingStep, setStaffOnboardingStep] = useState('details')
+  const [staffOnboardingForm, setStaffOnboardingForm] = useState({
+    email: '',
+    birthDate: '',
+    mobileNumber: '',
+    address: '',
+  })
+  const [staffOnboardingCode, setStaffOnboardingCode] = useState('')
+  const [staffOnboardingError, setStaffOnboardingError] = useState('')
+  const [staffOnboardingInfo, setStaffOnboardingInfo] = useState('')
+  const [isStaffOnboardingSubmitting, setIsStaffOnboardingSubmitting] = useState(false)
+  const [isStaffOnboardingVerifying, setIsStaffOnboardingVerifying] = useState(false)
   const profileUserIdRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -158,11 +200,11 @@ function AppRoutes() {
 
     profileUserIdRef.current = profileData.user_id
     setProfile(profileData)
-    setNavItems(appendSettingsNavItem((navigationData ?? []).map((row) => ({
+    setNavItems((navigationData ?? []).map((row) => ({
       id: row.item_key,
       label: row.label,
       path: row.path,
-    }))))
+    })))
     setError('')
     return true
   }, [])
@@ -305,6 +347,158 @@ function AppRoutes() {
       window.clearInterval(tokenCheckTimer)
     }
   }, [session])
+
+  useEffect(() => {
+    if (!profile) return
+
+    setStaffOnboardingForm({
+      email: isPlaceholderStaffEmail(profile?.email) ? '' : `${profile?.email || ''}`.trim(),
+      birthDate: profile?.birth_date || '',
+      mobileNumber: toPhilippineLocalMobileInput(profile?.mobile_number || ''),
+      address: profile?.address || '',
+    })
+    setStaffOnboardingStep('details')
+    setStaffOnboardingCode('')
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+  }, [profile?.user_id, profile?.email, profile?.birth_date, profile?.mobile_number, profile?.address])
+
+  const handleStaffOnboardingFieldChange = (event) => {
+    const { name, value } = event.target
+    setStaffOnboardingForm((previous) => ({
+      ...previous,
+      [name]: name === 'mobileNumber' ? normalizePhilippineMobile(value) : value,
+    }))
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+  }
+
+  const handleStaffOnboardingCodeChange = (event) => {
+    setStaffOnboardingCode(event.target.value)
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+  }
+
+  const handleStaffOnboardingSubmit = async (event) => {
+    event.preventDefault()
+    if (!supabase || !session?.user?.id) return
+
+    const email = staffOnboardingForm.email.trim().toLowerCase()
+    const birthDate = staffOnboardingForm.birthDate
+    const mobileNumber = normalizePhilippineMobile(staffOnboardingForm.mobileNumber)
+    const address = staffOnboardingForm.address.trim()
+
+    if (!email || !birthDate || !mobileNumber || !address) {
+      setStaffOnboardingError('Please complete all required details.')
+      return
+    }
+    if (calculateAgeFromDate(birthDate) < 18) {
+      setStaffOnboardingError('You must be at least 18 years old.')
+      return
+    }
+    if (!/^9\d{9}$/.test(mobileNumber)) {
+      setStaffOnboardingError('Enter a valid Philippine mobile number after +63, like 9762911478.')
+      return
+    }
+
+    setIsStaffOnboardingSubmitting(true)
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession()
+      const accessToken = data?.session?.access_token || ''
+      if (sessionError || !accessToken) {
+        setStaffOnboardingError('Your session expired. Please log in again.')
+        setIsStaffOnboardingSubmitting(false)
+        return
+      }
+
+      const response = await fetch('/api/auth/start-staff-onboarding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email,
+          birthDate,
+          mobileNumber: `+63${mobileNumber}`,
+          address,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setStaffOnboardingError(payload?.error || 'Unable to start profile verification.')
+        setIsStaffOnboardingSubmitting(false)
+        return
+      }
+
+      setStaffOnboardingStep('verify')
+      setStaffOnboardingCode('')
+      setStaffOnboardingInfo(`Verification code sent to ${payload?.email || email}.`)
+      setIsStaffOnboardingSubmitting(false)
+    } catch {
+      setStaffOnboardingError('Unable to start profile verification.')
+      setIsStaffOnboardingSubmitting(false)
+    }
+  }
+
+  const handleStaffOnboardingVerify = async (event) => {
+    event.preventDefault()
+    if (!supabase || !session?.user?.id) return
+
+    const code = staffOnboardingCode.trim()
+    const email = staffOnboardingForm.email.trim().toLowerCase()
+
+    if (!code) {
+      setStaffOnboardingError('Please enter the verification code sent to your email.')
+      return
+    }
+
+    setIsStaffOnboardingVerifying(true)
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession()
+      const accessToken = data?.session?.access_token || ''
+      if (sessionError || !accessToken) {
+        setStaffOnboardingError('Your session expired. Please log in again.')
+        setIsStaffOnboardingVerifying(false)
+        return
+      }
+
+      const response = await fetch('/api/auth/verify-staff-onboarding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email,
+          code,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setStaffOnboardingError(payload?.error || 'Unable to verify onboarding code.')
+        setIsStaffOnboardingVerifying(false)
+        return
+      }
+
+      await loadAccessContext(session.user.id)
+      setStaffOnboardingStep('details')
+      setStaffOnboardingCode('')
+      setStaffOnboardingInfo('')
+      setIsStaffOnboardingVerifying(false)
+    } catch {
+      setStaffOnboardingError('Unable to verify onboarding code.')
+      setIsStaffOnboardingVerifying(false)
+    }
+  }
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -610,6 +804,16 @@ function AppRoutes() {
     navigate('/login', { replace: true })
   }
 
+  const handleBackToLogin = async () => {
+    if (!supabase) return
+    await supabase.auth.signOut()
+    setStaffOnboardingStep('details')
+    setStaffOnboardingCode('')
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+    navigate('/login', { replace: true })
+  }
+
   if (isBootstrapping) {
     return <div className="app-loading">Loading...</div>
   }
@@ -624,6 +828,7 @@ function AppRoutes() {
 
   const isAuthed = Boolean(session && profile?.is_active)
   const isResetPasswordRoute = location.pathname === '/reset-password'
+  const isStaffOnboardingOpen = isAuthed && requiresStaffOnboarding(profile)
 
   if (!isAuthed && location.pathname !== '/login' && !isResetPasswordRoute) {
     return <Navigate to="/login" replace />
@@ -682,6 +887,88 @@ function AppRoutes() {
                 <button type="button" className="danger-btn" onClick={closeLogoutModal}>Cancel</button>
                 <button type="button" className="success-btn" onClick={() => { void handleLogoutConfirm() }}>Logout</button>
               </div>
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {isStaffOnboardingOpen ? (
+        <>
+          <div className="modal-backdrop" />
+          <section className="pr-modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="staff-onboarding-title">
+            <div className="pr-modal-head">
+              <h2 id="staff-onboarding-title">
+                {staffOnboardingStep === 'details' ? 'Complete Your Profile' : 'Verify Your Email'}
+              </h2>
+            </div>
+            <div className="pr-modal-body">
+              {staffOnboardingStep === 'details' ? (
+                <form className="onboarding-form" onSubmit={(event) => { void handleStaffOnboardingSubmit(event) }}>
+                  <p>Please complete your details first before accessing the system.</p>
+                  <div className="onboarding-grid">
+                    <label>
+                      Email
+                      <input type="email" name="email" value={staffOnboardingForm.email} onChange={handleStaffOnboardingFieldChange} placeholder="Enter your real email" />
+                    </label>
+                    <label>
+                      Birthday
+                      <input type="date" name="birthDate" value={staffOnboardingForm.birthDate} onChange={handleStaffOnboardingFieldChange} max={getAdultBirthDateMax()} />
+                    </label>
+                    <label>
+                      Mobile Number
+                      <div className="onboarding-phone-field">
+                        <span className="onboarding-phone-prefix">+63</span>
+                        <input type="text" inputMode="numeric" name="mobileNumber" value={staffOnboardingForm.mobileNumber} onChange={handleStaffOnboardingFieldChange} placeholder="9762911478" />
+                      </div>
+                    </label>
+                    <label className="span-2">
+                      Address
+                      <input type="text" name="address" value={staffOnboardingForm.address} onChange={handleStaffOnboardingFieldChange} placeholder="Enter your address" />
+                    </label>
+                  </div>
+                  {staffOnboardingError ? <p className="error">{staffOnboardingError}</p> : null}
+                  {staffOnboardingInfo ? <p className="onboarding-success">{staffOnboardingInfo}</p> : null}
+                  <div className="modal-actions">
+                    <button type="button" className="ghost" onClick={() => { void handleBackToLogin() }} disabled={isStaffOnboardingSubmitting}>
+                      Back to Login
+                    </button>
+                    <button type="submit" className="success-btn" disabled={isStaffOnboardingSubmitting}>
+                      {isStaffOnboardingSubmitting ? 'Sending...' : 'Submit Details'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="onboarding-form onboarding-verify-form" onSubmit={(event) => { void handleStaffOnboardingVerify(event) }}>
+                  <p>Enter the verification code that was sent to your email.</p>
+                  <div className="onboarding-grid single">
+                    <label>
+                      Verification Code
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={staffOnboardingCode}
+                        onChange={handleStaffOnboardingCodeChange}
+                        placeholder="Enter 6-digit code"
+                      />
+                    </label>
+                  </div>
+                  {staffOnboardingError ? <p className="error">{staffOnboardingError}</p> : null}
+                  {staffOnboardingInfo ? <p className="onboarding-success">{staffOnboardingInfo}</p> : null}
+                  <div className="modal-actions">
+                    <button type="button" className="ghost" onClick={() => { void handleBackToLogin() }} disabled={isStaffOnboardingVerifying}>
+                      Back to Login
+                    </button>
+                    <button type="button" className="ghost" onClick={() => { setStaffOnboardingStep('details'); setStaffOnboardingError(''); setStaffOnboardingInfo('') }} disabled={isStaffOnboardingVerifying}>
+                      Back
+                    </button>
+                    <button type="submit" className="success-btn" disabled={isStaffOnboardingVerifying}>
+                      {isStaffOnboardingVerifying ? 'Verifying...' : 'Verify Code'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </section>
         </>
