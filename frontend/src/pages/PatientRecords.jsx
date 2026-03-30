@@ -64,6 +64,13 @@ function PatientRecords() {
   const [pageInput, setPageInput] = useState('1')
   const [statusConfirmRow, setStatusConfirmRow] = useState(null)
   const [isStatusUpdating, setIsStatusUpdating] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [sexFilter, setSexFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [minAgeFilter, setMinAgeFilter] = useState('')
+  const [maxAgeFilter, setMaxAgeFilter] = useState('')
+  const [registeredFromFilter, setRegisteredFromFilter] = useState('')
+  const [registeredToFilter, setRegisteredToFilter] = useState('')
 
   const loadRecords = async () => {
     setLoading(true)
@@ -165,26 +172,80 @@ function PatientRecords() {
       ? records.filter((row) => `${row.last_name}, ${row.first_name}`.toLowerCase().includes(query))
       : [...records]
 
+    const filtered = source.filter((row) => {
+      if (sexFilter && row.sex !== sexFilter) return false
+
+      if (statusFilter === 'active' && !row.is_active) return false
+      if (statusFilter === 'inactive' && row.is_active) return false
+
+      const age = calculateAge(row.birth_date)
+      const numericAge = typeof age === 'number' ? age : Number.parseInt(`${age}`, 10)
+      const minAge = Number.parseInt(minAgeFilter, 10)
+      const maxAge = Number.parseInt(maxAgeFilter, 10)
+
+      if (Number.isFinite(minAge) && (!Number.isFinite(numericAge) || numericAge < minAge)) return false
+      if (Number.isFinite(maxAge) && (!Number.isFinite(numericAge) || numericAge > maxAge)) return false
+
+      const createdDate = `${row.created_at || ''}`.slice(0, 10)
+      if (registeredFromFilter && (!createdDate || createdDate < registeredFromFilter)) return false
+      if (registeredToFilter && (!createdDate || createdDate > registeredToFilter)) return false
+
+      return true
+    })
+
     if (sortBy === 'registered') {
       const multiplier = registeredSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (
+      return filtered.sort((a, b) => (
         (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * multiplier
       ))
     }
 
     if (sortBy === 'patientId') {
       const multiplier = patientIdSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
+      return filtered.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
     }
 
-    return source.sort((a, b) => {
+    return filtered.sort((a, b) => {
       const aName = `${a.last_name}, ${a.first_name}`.toLowerCase()
       const bName = `${b.last_name}, ${b.first_name}`.toLowerCase()
       return nameSortDirection === 'asc'
         ? aName.localeCompare(bName)
         : bName.localeCompare(aName)
     })
-  }, [nameSortDirection, patientIdSortDirection, records, registeredSortDirection, searchTerm, sortBy])
+  }, [
+    maxAgeFilter,
+    minAgeFilter,
+    nameSortDirection,
+    patientIdSortDirection,
+    records,
+    registeredFromFilter,
+    registeredSortDirection,
+    registeredToFilter,
+    searchTerm,
+    sexFilter,
+    sortBy,
+    statusFilter,
+  ])
+
+  const hasActiveFilters = Boolean(
+    sexFilter
+    || statusFilter
+    || minAgeFilter
+    || maxAgeFilter
+    || registeredFromFilter
+    || registeredToFilter,
+  )
+
+  const clearFilters = () => {
+    setSexFilter('')
+    setStatusFilter('')
+    setMinAgeFilter('')
+    setMaxAgeFilter('')
+    setRegisteredFromFilter('')
+    setRegisteredToFilter('')
+    setCurrentPage(1)
+    setPageInput('1')
+  }
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / rowsPerPage))
   const safePage = Math.min(currentPage, totalPages)
@@ -194,17 +255,10 @@ function PatientRecords() {
   const visibleStart = filteredRecords.length === 0 ? 0 : pageStart + 1
   const visibleEnd = filteredRecords.length === 0 ? 0 : Math.min(pageStart + rowsPerPage, filteredRecords.length)
   const getVisiblePageItems = () => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1)
+    if (totalPages <= 3) return Array.from({ length: totalPages }, (_, index) => index + 1)
 
-    const startPage = Math.max(1, Math.min(safePage - 2, totalPages - 4))
-    const endPage = startPage + 4
-    const items = []
-
-    if (startPage > 1) items.push('start-ellipsis')
-    for (let page = startPage; page <= endPage; page += 1) items.push(page)
-    if (endPage < totalPages) items.push('end-ellipsis')
-
-    return items
+    const startPage = Math.max(1, Math.min(safePage - 1, totalPages - 2))
+    return Array.from({ length: 3 }, (_, index) => startPage + index)
   }
   const pageItems = getVisiblePageItems()
 
@@ -227,9 +281,8 @@ function PatientRecords() {
       </header>
 
       <section className="records fixed-table-page patient-records-page">
-        <div className="records-header">
+        <div className="records-header patient-records-header">
           <div>
-            <h2>Records</h2>
             <div className="records-toolbar">
               <div className="search-box">
                 <span className="search-icon" aria-hidden />
@@ -249,6 +302,13 @@ function PatientRecords() {
           <div className="records-actions">
             <button type="button" className="primary" onClick={() => navigate('/add-patient')}>
               Add New Patient
+            </button>
+            <button
+              type="button"
+              className={`ghost records-filter-toggle ${showFilters ? 'is-open' : ''}`}
+              onClick={() => setShowFilters((previous) => !previous)}
+            >
+              Filters
             </button>
             <div className="sorter">
               <label htmlFor="sort">Sort by:</label>
@@ -366,7 +426,7 @@ function PatientRecords() {
               </label>
             </div>
             <div className="pagination-group pagination-nav-group">
-              <button type="button" disabled={safePage <= 1} onClick={() => { const nextPage = Math.max(1, safePage - 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>Previous</button>
+              <button type="button" aria-label="Previous page" disabled={safePage <= 1} onClick={() => { const nextPage = Math.max(1, safePage - 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>&#10094;</button>
               {pageItems.map((item) => (
                 typeof item === 'number'
                   ? (
@@ -381,7 +441,7 @@ function PatientRecords() {
                   )
                   : <span key={item} className="pagination-ellipsis">...</span>
               ))}
-              <button type="button" disabled={safePage >= totalPages} onClick={() => { const nextPage = Math.min(totalPages, safePage + 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>Next</button>
+              <button type="button" aria-label="Next page" disabled={safePage >= totalPages} onClick={() => { const nextPage = Math.min(totalPages, safePage + 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>&#10095;</button>
             </div>
             <div className="pagination-group pagination-jump-group">
               <form
@@ -407,6 +467,114 @@ function PatientRecords() {
           </div>
         </div>
       </section>
+
+      {showFilters ? <div className="modal-backdrop" onClick={() => setShowFilters(false)} /> : null}
+      {showFilters ? (
+        <div className="pr-modal procedures-modal patient-records-filter-modal">
+          <div className="pr-modal-head">
+            <h2>Filters</h2>
+            <button type="button" onClick={() => setShowFilters(false)}>X</button>
+          </div>
+          <div className="pr-modal-body">
+            <div className="records-filter-panel patient-records-filter-panel">
+              <label className="inline-field" htmlFor="patient-filter-sex">
+                Sex:
+                <select
+                  id="patient-filter-sex"
+                  value={sexFilter}
+                  onChange={(event) => {
+                    setSexFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </label>
+              <label className="inline-field" htmlFor="patient-filter-age-min">
+                Age Min:
+                <input
+                  id="patient-filter-age-min"
+                  type="number"
+                  min="0"
+                  value={minAgeFilter}
+                  onChange={(event) => {
+                    setMinAgeFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                />
+              </label>
+              <label className="inline-field" htmlFor="patient-filter-age-max">
+                Age Max:
+                <input
+                  id="patient-filter-age-max"
+                  type="number"
+                  min="0"
+                  value={maxAgeFilter}
+                  onChange={(event) => {
+                    setMaxAgeFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                />
+              </label>
+              <label className="inline-field" htmlFor="patient-filter-registered-from">
+                Registered From:
+                <input
+                  id="patient-filter-registered-from"
+                  type="date"
+                  value={registeredFromFilter}
+                  onChange={(event) => {
+                    setRegisteredFromFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                />
+              </label>
+              <label className="inline-field" htmlFor="patient-filter-registered-to">
+                Registered To:
+                <input
+                  id="patient-filter-registered-to"
+                  type="date"
+                  value={registeredToFilter}
+                  onChange={(event) => {
+                    setRegisteredToFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                />
+              </label>
+              <label className="inline-field" htmlFor="patient-filter-status">
+                Status:
+                <select
+                  id="patient-filter-status"
+                  value={statusFilter}
+                  onChange={(event) => {
+                    setStatusFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+            </div>
+            <div className="modal-actions patient-records-filter-actions">
+              <button type="button" className="ghost records-filter-clear" onClick={clearFilters} disabled={!hasActiveFilters}>
+                Clear Filters
+              </button>
+              <button type="button" className="success-btn" onClick={() => setShowFilters(false)}>
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {statusConfirmRow ? <div className="modal-backdrop" onClick={() => { if (!isStatusUpdating) setStatusConfirmRow(null) }} /> : null}
       {statusConfirmRow ? (

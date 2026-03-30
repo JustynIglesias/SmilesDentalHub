@@ -12,8 +12,8 @@ if (!supabaseAnonKey) missingSupabaseEnv.push('VITE_SUPABASE_ANON_KEY')
 export const supabase = missingSupabaseEnv.length === 0
   ? createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      // Keep auth only in memory so a reload always returns to login.
-      persistSession: false,
+      // Keep auth persisted so users stay signed in across page refreshes.
+      persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
     },

@@ -43,11 +43,13 @@ function PatientLogs() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [dateFilter, setDateFilter] = useState('')
+  const [dateFromFilter, setDateFromFilter] = useState('')
+  const [dateToFilter, setDateToFilter] = useState('')
   const [sortOrder, setSortOrder] = useState('desc')
   const [currentPage, setCurrentPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE)
   const [pageInput, setPageInput] = useState('1')
+  const [showFilters, setShowFilters] = useState(false)
 
   const loadLogs = async () => {
     setLoading(true)
@@ -75,18 +77,20 @@ function PatientLogs() {
 
   const filteredLogs = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    const hasDateFilter = Boolean(dateFilter)
 
     const attendanceRows = (logs ?? []).filter((row) => `${row.action ?? ''}`.trim().toLowerCase() === 'service_update')
 
     const rows = attendanceRows.filter((row) => {
       if (query && !`${row.patient_name}`.toLowerCase().includes(query)) return false
-      if (!hasDateFilter) return true
 
       const rowDate = new Date(row.logged_at)
-      if (Number.isNaN(rowDate.getTime())) return false
+      if (Number.isNaN(rowDate.getTime())) return !(dateFromFilter || dateToFilter)
+
       const normalized = toLocalIsoDate(rowDate)
-      return normalized === dateFilter
+      if (dateFromFilter && normalized < dateFromFilter) return false
+      if (dateToFilter && normalized > dateToFilter) return false
+
+      return true
     })
 
     return rows.sort((a, b) => {
@@ -94,7 +98,7 @@ function PatientLogs() {
       const bTime = new Date(b.logged_at).getTime()
       return sortOrder === 'asc' ? aTime - bTime : bTime - aTime
     })
-  }, [logs, searchTerm, dateFilter, sortOrder])
+  }, [dateFromFilter, dateToFilter, logs, searchTerm, sortOrder])
 
   const handlePageJump = (totalPages) => {
     const parsedPage = Number.parseInt(pageInput, 10)
@@ -109,17 +113,17 @@ function PatientLogs() {
   }
 
   const getVisiblePageItems = (safePage, totalPages) => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1)
+    if (totalPages <= 3) return Array.from({ length: totalPages }, (_, index) => index + 1)
 
-    const startPage = Math.max(1, Math.min(safePage - 2, totalPages - 4))
-    const endPage = startPage + 4
-    const items = []
+    const startPage = Math.max(1, Math.min(safePage - 1, totalPages - 2))
+    return Array.from({ length: 3 }, (_, index) => startPage + index)
+  }
 
-    if (startPage > 1) items.push('start-ellipsis')
-    for (let page = startPage; page <= endPage; page += 1) items.push(page)
-    if (endPage < totalPages) items.push('end-ellipsis')
-
-    return items
+  const clearFilters = () => {
+    setDateFromFilter('')
+    setDateToFilter('')
+    setCurrentPage(1)
+    setPageInput('1')
   }
 
   return (
@@ -129,15 +133,14 @@ function PatientLogs() {
       </header>
 
       <section className="records fixed-table-page patient-logs-page">
-        <div className="records-header stacked">
+        <div className="records-header patient-logs-header">
           <div>
-            <h2>Patient Logs</h2>
-            <div className="filters">
+            <div className="records-toolbar">
               <div className="search-box">
                 <span className="search-icon" aria-hidden />
                 <input
                   type="text"
-                  placeholder="search by name"
+                  placeholder="Search by Name"
                   value={searchTerm}
                   onChange={(event) => {
                     setSearchTerm(event.target.value)
@@ -146,36 +149,33 @@ function PatientLogs() {
                   }}
                 />
               </div>
-              <label className="inline-field">
-                Select Date:
-                <input
-                  type="date"
-                  value={dateFilter}
-                  onChange={(event) => {
-                    setDateFilter(event.target.value)
-                    setCurrentPage(1)
-                    setPageInput('1')
-                  }}
-                />
-              </label>
-              <div className="sorter inline">
-                <label htmlFor="logs-sort">Sort By:</label>
-                <select id="logs-sort" value="date" onChange={() => {}}>
-                  <option value="date">Date</option>
-                </select>
-                <button
-                  type="button"
-                  className="ghost sort-direction-btn"
-                  aria-label="Toggle sort direction"
-                  onClick={() => {
-                    setSortOrder((previous) => (previous === 'asc' ? 'desc' : 'asc'))
-                    setCurrentPage(1)
-                    setPageInput('1')
-                  }}
-                >
-                  <SortDirectionIcon direction={sortOrder} />
-                </button>
-              </div>
+            </div>
+          </div>
+          <div className="records-actions">
+            <button
+              type="button"
+              className={`ghost records-filter-toggle ${showFilters ? 'is-open' : ''}`}
+              onClick={() => setShowFilters(true)}
+            >
+              Filters
+            </button>
+            <div className="sorter">
+              <label htmlFor="logs-sort">Sort by:</label>
+              <select id="logs-sort" value="date" onChange={() => {}}>
+                <option value="date">Date</option>
+              </select>
+              <button
+                type="button"
+                className="ghost sort-direction-btn"
+                aria-label="Toggle sort direction"
+                onClick={() => {
+                  setSortOrder((previous) => (previous === 'asc' ? 'desc' : 'asc'))
+                  setCurrentPage(1)
+                  setPageInput('1')
+                }}
+              >
+                <SortDirectionIcon direction={sortOrder} />
+              </button>
             </div>
           </div>
         </div>
@@ -236,7 +236,7 @@ function PatientLogs() {
                     </label>
                   </div>
                   <div className="pagination-group pagination-nav-group">
-                    <button type="button" disabled={safePage <= 1} onClick={() => { const nextPage = Math.max(1, safePage - 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>Previous</button>
+                    <button type="button" aria-label="Previous page" disabled={safePage <= 1} onClick={() => { const nextPage = Math.max(1, safePage - 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>&#10094;</button>
                     {pageItems.map((item) => (
                       typeof item === 'number'
                         ? (
@@ -246,7 +246,7 @@ function PatientLogs() {
                         )
                         : <span key={item} className="pagination-ellipsis">...</span>
                     ))}
-                    <button type="button" disabled={safePage >= totalPages} onClick={() => { const nextPage = Math.min(totalPages, safePage + 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>Next</button>
+                    <button type="button" aria-label="Next page" disabled={safePage >= totalPages} onClick={() => { const nextPage = Math.min(totalPages, safePage + 1); setCurrentPage(nextPage); setPageInput(`${nextPage}`) }}>&#10095;</button>
                   </div>
                   <div className="pagination-group pagination-jump-group">
                     <form
@@ -275,6 +275,54 @@ function PatientLogs() {
           )
         })()}
       </section>
+
+      {showFilters ? <div className="modal-backdrop" onClick={() => setShowFilters(false)} /> : null}
+      {showFilters ? (
+        <div className="pr-modal procedures-modal patient-logs-filter-modal">
+          <div className="pr-modal-head">
+            <h2>Filters</h2>
+            <button type="button" onClick={() => setShowFilters(false)}>X</button>
+          </div>
+          <div className="pr-modal-body">
+            <div className="records-filter-panel patient-logs-filter-panel">
+              <label className="inline-field" htmlFor="logs-filter-date-from">
+                Date From:
+                <input
+                  id="logs-filter-date-from"
+                  type="date"
+                  value={dateFromFilter}
+                  onChange={(event) => {
+                    setDateFromFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                />
+              </label>
+              <label className="inline-field" htmlFor="logs-filter-date-to">
+                Date To:
+                <input
+                  id="logs-filter-date-to"
+                  type="date"
+                  value={dateToFilter}
+                  onChange={(event) => {
+                    setDateToFilter(event.target.value)
+                    setCurrentPage(1)
+                    setPageInput('1')
+                  }}
+                />
+              </label>
+            </div>
+            <div className="modal-actions patient-logs-filter-actions">
+              <button type="button" className="ghost records-filter-clear" onClick={clearFilters} disabled={!dateFromFilter && !dateToFilter}>
+                Clear Filters
+              </button>
+              <button type="button" className="success-btn" onClick={() => setShowFilters(false)}>
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

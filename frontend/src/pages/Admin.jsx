@@ -252,6 +252,23 @@ function Admin() {
   const [isEditingUser, setIsEditingUser] = useState(false)
   const [invalidAddUserFields, setInvalidAddUserFields] = useState({})
   const [addUserValidationMessage, setAddUserValidationMessage] = useState('')
+  const [showUsersFilters, setShowUsersFilters] = useState(false)
+  const [showInactiveFilters, setShowInactiveFilters] = useState(false)
+  const [showArchiveFilters, setShowArchiveFilters] = useState(false)
+  const [usersRoleFilter, setUsersRoleFilter] = useState('')
+  const [usersCreatedFromFilter, setUsersCreatedFromFilter] = useState('')
+  const [usersCreatedToFilter, setUsersCreatedToFilter] = useState('')
+  const [inactiveSexFilter, setInactiveSexFilter] = useState('')
+  const [inactiveMinAgeFilter, setInactiveMinAgeFilter] = useState('')
+  const [inactiveMaxAgeFilter, setInactiveMaxAgeFilter] = useState('')
+  const [inactiveDateFromFilter, setInactiveDateFromFilter] = useState('')
+  const [inactiveDateToFilter, setInactiveDateToFilter] = useState('')
+  const [archiveSexFilter, setArchiveSexFilter] = useState('')
+  const [archiveRoleFilter, setArchiveRoleFilter] = useState('')
+  const [archiveMinAgeFilter, setArchiveMinAgeFilter] = useState('')
+  const [archiveMaxAgeFilter, setArchiveMaxAgeFilter] = useState('')
+  const [archiveDateFromFilter, setArchiveDateFromFilter] = useState('')
+  const [archiveDateToFilter, setArchiveDateToFilter] = useState('')
   const [userForm, setUserForm] = useState({
     user_id: '',
     first_name: '',
@@ -761,19 +778,29 @@ function Admin() {
       ))
       : [...users]
 
+    const filtered = source.filter((row) => {
+      if (usersRoleFilter && row.role !== usersRoleFilter) return false
+
+      const createdDate = `${row.created_at || ''}`.slice(0, 10)
+      if (usersCreatedFromFilter && (!createdDate || createdDate < usersCreatedFromFilter)) return false
+      if (usersCreatedToFilter && (!createdDate || createdDate > usersCreatedToFilter)) return false
+
+      return true
+    })
+
     if (usersSortBy === 'created') {
       const multiplier = usersCreatedSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * multiplier)
+      return filtered.sort((a, b) => (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * multiplier)
     }
 
     if (usersSortBy === 'staffId') {
       const multiplier = usersStaffIdSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (staffCodeNumber(a) - staffCodeNumber(b)) * multiplier)
+      return filtered.sort((a, b) => (staffCodeNumber(a) - staffCodeNumber(b)) * multiplier)
     }
 
     if (usersSortBy === 'role') {
       const multiplier = usersRoleSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => {
+      return filtered.sort((a, b) => {
         const aRole = ROLE_SORT_ORDER[a.role] ?? Number.MAX_SAFE_INTEGER
         const bRole = ROLE_SORT_ORDER[b.role] ?? Number.MAX_SAFE_INTEGER
         if (aRole !== bRole) return (aRole - bRole) * multiplier
@@ -783,12 +810,23 @@ function Admin() {
       })
     }
 
-    return source.sort((a, b) => {
+    return filtered.sort((a, b) => {
       const aName = `${a.full_name || ''}`.toLowerCase()
       const bName = `${b.full_name || ''}`.toLowerCase()
       return usersNameSortDirection === 'asc' ? aName.localeCompare(bName) : bName.localeCompare(aName)
     })
-  }, [users, usersCreatedSortDirection, usersNameSortDirection, usersRoleSortDirection, usersSearchTerm, usersSortBy, usersStaffIdSortDirection])
+  }, [
+    users,
+    usersCreatedFromFilter,
+    usersCreatedSortDirection,
+    usersCreatedToFilter,
+    usersNameSortDirection,
+    usersRoleFilter,
+    usersRoleSortDirection,
+    usersSearchTerm,
+    usersSortBy,
+    usersStaffIdSortDirection,
+  ])
 
   const filteredInactivePatients = useMemo(() => {
     const query = inactiveSearchTerm.trim().toLowerCase()
@@ -799,29 +837,51 @@ function Admin() {
       ))
       : [...inactivePatients]
 
+    const filtered = source.filter((row) => {
+      if (inactiveSexFilter && row.sex !== inactiveSexFilter) return false
+
+      const age = calculateAge(row.birth_date)
+      const numericAge = typeof age === 'number' ? age : Number.parseInt(`${age}`, 10)
+      const minAge = Number.parseInt(inactiveMinAgeFilter, 10)
+      const maxAge = Number.parseInt(inactiveMaxAgeFilter, 10)
+      if (Number.isFinite(minAge) && (!Number.isFinite(numericAge) || numericAge < minAge)) return false
+      if (Number.isFinite(maxAge) && (!Number.isFinite(numericAge) || numericAge > maxAge)) return false
+
+      const inactiveDate = `${row.archived_at ?? row.created_at ?? ''}`.slice(0, 10)
+      if (inactiveDateFromFilter && (!inactiveDate || inactiveDate < inactiveDateFromFilter)) return false
+      if (inactiveDateToFilter && (!inactiveDate || inactiveDate > inactiveDateToFilter)) return false
+
+      return true
+    })
+
     if (inactiveSortBy === 'inactiveDate') {
       const multiplier = inactiveDateSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (
+      return filtered.sort((a, b) => (
         (new Date(a.archived_at ?? a.created_at).getTime() - new Date(b.archived_at ?? b.created_at).getTime()) * multiplier
       ))
     }
 
     if (inactiveSortBy === 'patientId') {
       const multiplier = inactivePatientIdSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
+      return filtered.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
     }
 
-    return source.sort((a, b) => {
+    return filtered.sort((a, b) => {
       const aName = `${a.last_name || ''}, ${a.first_name || ''}`.toLowerCase()
       const bName = `${b.last_name || ''}, ${b.first_name || ''}`.toLowerCase()
       return inactiveNameSortDirection === 'asc' ? aName.localeCompare(bName) : bName.localeCompare(aName)
     })
   }, [
     inactiveDateSortDirection,
+    inactiveDateFromFilter,
+    inactiveDateToFilter,
+    inactiveMaxAgeFilter,
+    inactiveMinAgeFilter,
     inactiveNameSortDirection,
     inactivePatientIdSortDirection,
     inactivePatients,
     inactiveSearchTerm,
+    inactiveSexFilter,
     inactiveSortBy,
   ])
 
@@ -852,22 +912,42 @@ function Admin() {
       })
       : [...archiveRows]
 
+    const filtered = source.filter((row) => {
+      const archiveDate = `${row.updated_at ?? row.archived_at ?? ''}`.slice(0, 10)
+      if (archiveDateFromFilter && (!archiveDate || archiveDate < archiveDateFromFilter)) return false
+      if (archiveDateToFilter && (!archiveDate || archiveDate > archiveDateToFilter)) return false
+
+      if (archiveType === 'patients') {
+        if (archiveSexFilter && row.sex !== archiveSexFilter) return false
+        const age = calculateAge(row.birth_date)
+        const numericAge = typeof age === 'number' ? age : Number.parseInt(`${age}`, 10)
+        const minAge = Number.parseInt(archiveMinAgeFilter, 10)
+        const maxAge = Number.parseInt(archiveMaxAgeFilter, 10)
+        if (Number.isFinite(minAge) && (!Number.isFinite(numericAge) || numericAge < minAge)) return false
+        if (Number.isFinite(maxAge) && (!Number.isFinite(numericAge) || numericAge > maxAge)) return false
+      }
+
+      if (archiveType === 'users' && archiveRoleFilter && row.role !== archiveRoleFilter) return false
+
+      return true
+    })
+
     if (archiveSortBy === 'archiveDate') {
       const multiplier = archiveDateSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (new Date(a.updated_at ?? a.archived_at).getTime() - new Date(b.updated_at ?? b.archived_at).getTime()) * multiplier)
+      return filtered.sort((a, b) => (new Date(a.updated_at ?? a.archived_at).getTime() - new Date(b.updated_at ?? b.archived_at).getTime()) * multiplier)
     }
 
     if (archiveSortBy === 'patientId' && archiveType === 'patients') {
       const multiplier = archiveIdSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
+      return filtered.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
     }
 
     if (archiveSortBy === 'staffId' && archiveType === 'users') {
       const multiplier = archiveIdSortDirection === 'asc' ? 1 : -1
-      return source.sort((a, b) => (staffCodeNumber(a) - staffCodeNumber(b)) * multiplier)
+      return filtered.sort((a, b) => (staffCodeNumber(a) - staffCodeNumber(b)) * multiplier)
     }
 
-    return source.sort((a, b) => {
+    return filtered.sort((a, b) => {
       const aName = archiveType === 'patients'
         ? `${a.last_name || ''}, ${a.first_name || ''}`.toLowerCase()
         : archiveType === 'users'
@@ -884,7 +964,21 @@ function Admin() {
             : `${b.condition_name || ''}`.toLowerCase()
       return archiveNameSortDirection === 'asc' ? aName.localeCompare(bName) : bName.localeCompare(aName)
     })
-  }, [archiveDateSortDirection, archiveIdSortDirection, archiveNameSortDirection, archiveRows, archiveSearchTerm, archiveSortBy, archiveType])
+  }, [
+    archiveDateFromFilter,
+    archiveDateSortDirection,
+    archiveDateToFilter,
+    archiveIdSortDirection,
+    archiveMaxAgeFilter,
+    archiveMinAgeFilter,
+    archiveNameSortDirection,
+    archiveRoleFilter,
+    archiveRows,
+    archiveSearchTerm,
+    archiveSexFilter,
+    archiveSortBy,
+    archiveType,
+  ])
   const activeAdminCount = useMemo(
     () => users.filter((user) => user.is_active && user.role === 'admin').length,
     [users],
@@ -933,6 +1027,39 @@ function Admin() {
   const inactivePaging = paginateRows(filteredInactivePatients, inactivePage, inactiveRowsPerPage)
   const archivePaging = paginateRows(filteredArchiveRows, archivePage, archiveRowsPerPage)
 
+  const hasUsersFilters = Boolean(usersRoleFilter || usersCreatedFromFilter || usersCreatedToFilter)
+  const hasInactiveFilters = Boolean(inactiveSexFilter || inactiveMinAgeFilter || inactiveMaxAgeFilter || inactiveDateFromFilter || inactiveDateToFilter)
+  const hasArchiveFilters = Boolean(archiveSexFilter || archiveRoleFilter || archiveMinAgeFilter || archiveMaxAgeFilter || archiveDateFromFilter || archiveDateToFilter)
+
+  const clearUsersFilters = () => {
+    setUsersRoleFilter('')
+    setUsersCreatedFromFilter('')
+    setUsersCreatedToFilter('')
+    setUsersPage(1)
+    setUsersPageInput('1')
+  }
+
+  const clearInactiveFilters = () => {
+    setInactiveSexFilter('')
+    setInactiveMinAgeFilter('')
+    setInactiveMaxAgeFilter('')
+    setInactiveDateFromFilter('')
+    setInactiveDateToFilter('')
+    setInactivePage(1)
+    setInactivePageInput('1')
+  }
+
+  const clearArchiveFilters = () => {
+    setArchiveSexFilter('')
+    setArchiveRoleFilter('')
+    setArchiveMinAgeFilter('')
+    setArchiveMaxAgeFilter('')
+    setArchiveDateFromFilter('')
+    setArchiveDateToFilter('')
+    setArchivePage(1)
+    setArchivePageInput('1')
+  }
+
   const handlePageJump = ({ pageInput, setPageInput, setPage, totalPages, fallbackPage }) => {
     const parsedPage = Number.parseInt(pageInput, 10)
     if (!Number.isFinite(parsedPage)) {
@@ -946,17 +1073,10 @@ function Admin() {
   }
 
   const getVisiblePageItems = (safePage, totalPages) => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1)
+    if (totalPages <= 3) return Array.from({ length: totalPages }, (_, index) => index + 1)
 
-    const startPage = Math.max(1, Math.min(safePage - 2, totalPages - 4))
-    const endPage = startPage + 4
-    const items = []
-
-    if (startPage > 1) items.push('start-ellipsis')
-    for (let page = startPage; page <= endPage; page += 1) items.push(page)
-    if (endPage < totalPages) items.push('end-ellipsis')
-
-    return items
+    const startPage = Math.max(1, Math.min(safePage - 1, totalPages - 2))
+    return Array.from({ length: 3 }, (_, index) => startPage + index)
   }
 
   const renderPaginationControls = ({ paging, rowsPerPage, setRowsPerPage, setPage, pageInput, setPageInput }) => {
@@ -985,6 +1105,7 @@ function Admin() {
       <div className="pagination-group pagination-nav-group">
         <button
           type="button"
+          aria-label="Previous page"
           disabled={paging.safePage <= 1}
           onClick={() => {
             const nextPage = Math.max(1, paging.safePage - 1)
@@ -992,7 +1113,7 @@ function Admin() {
             setPageInput(`${nextPage}`)
           }}
         >
-          Previous
+          &#10094;
         </button>
         {pageItems.map((item) => (
           typeof item === 'number'
@@ -1013,6 +1134,7 @@ function Admin() {
         ))}
         <button
           type="button"
+          aria-label="Next page"
           disabled={paging.safePage >= paging.totalPages}
           onClick={() => {
             const nextPage = Math.min(paging.totalPages, paging.safePage + 1)
@@ -1020,7 +1142,7 @@ function Admin() {
             setPageInput(`${nextPage}`)
           }}
         >
-          Next
+          &#10095;
         </button>
       </div>
       <div className="pagination-group pagination-jump-group">
@@ -1078,9 +1200,8 @@ function Admin() {
 
         {tab === 'users' && !showAddUser ? (
           <div className="records">
-            <div className="records-header">
+            <div className="records-header admin-records-header">
               <div>
-                <h2>Users</h2>
                 <div className="records-toolbar">
                   <div className="search-box">
                     <span className="search-icon" aria-hidden />
@@ -1099,6 +1220,7 @@ function Admin() {
               </div>
               <div className="records-actions">
                 <button type="button" className="primary" onClick={() => setShowAddUser(true)}>Add User</button>
+                <button type="button" className={`ghost records-filter-toggle ${showUsersFilters ? 'is-open' : ''}`} onClick={() => setShowUsersFilters(true)}>Filters</button>
                 <div className="sorter">
                   <label htmlFor="admin-users-sort">Sort by:</label>
                   <select
@@ -1156,7 +1278,7 @@ function Admin() {
                 <span>Email</span>
                 <span>Role</span>
                 <span>Date Created</span>
-                <span />
+                <span>Action</span>
               </div>
               <div className="table-body">
                 {usersPaging.pageRows.map((row) => (
@@ -1258,9 +1380,8 @@ function Admin() {
 
         {tab === 'inactive' ? (
           <div className="records">
-            <div className="records-header">
+            <div className="records-header admin-records-header">
               <div>
-                <h2>Inactive List</h2>
                 <div className="records-toolbar">
                   <div className="search-box">
                     <span className="search-icon" aria-hidden />
@@ -1278,6 +1399,7 @@ function Admin() {
                 </div>
               </div>
               <div className="records-actions">
+                <button type="button" className={`ghost records-filter-toggle ${showInactiveFilters ? 'is-open' : ''}`} onClick={() => setShowInactiveFilters(true)}>Filters</button>
                 <div className="sorter">
                   <label htmlFor="admin-inactive-sort">Sort by:</label>
                   <select
@@ -1362,9 +1484,8 @@ function Admin() {
 
         {tab === 'archive' ? (
           <div className="records archive-records">
-            <div className="records-header">
+            <div className="records-header admin-records-header">
               <div>
-                <h2>Archive List</h2>
                 <div className="records-toolbar">
                   <div className="search-box">
                     <span className="search-icon" aria-hidden />
@@ -1382,6 +1503,7 @@ function Admin() {
                 </div>
               </div>
               <div className="records-actions">
+                <button type="button" className={`ghost records-filter-toggle ${showArchiveFilters ? 'is-open' : ''}`} onClick={() => setShowArchiveFilters(true)}>Filters</button>
                 <div className="sorter">
                   <label htmlFor="admin-archive-sort">Sort by:</label>
                   <select
@@ -1528,6 +1650,136 @@ function Admin() {
           </div>
         ) : null}
       </section>
+
+      {showUsersFilters ? <div className="modal-backdrop" onClick={() => setShowUsersFilters(false)} /> : null}
+      {showUsersFilters ? (
+        <div className="pr-modal procedures-modal admin-records-filter-modal">
+          <div className="pr-modal-head">
+            <h2>User Filters</h2>
+            <button type="button" onClick={() => setShowUsersFilters(false)}>X</button>
+          </div>
+          <div className="pr-modal-body">
+            <div className="records-filter-panel admin-records-filter-panel">
+              <label className="inline-field" htmlFor="admin-filter-role">
+                Role:
+                <select id="admin-filter-role" value={usersRoleFilter} onChange={(event) => { setUsersRoleFilter(event.target.value); setUsersPage(1); setUsersPageInput('1') }}>
+                  <option value="">All</option>
+                  {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                </select>
+              </label>
+              <label className="inline-field" htmlFor="admin-filter-created-from">
+                Date Created From:
+                <input id="admin-filter-created-from" type="date" value={usersCreatedFromFilter} onChange={(event) => { setUsersCreatedFromFilter(event.target.value); setUsersPage(1); setUsersPageInput('1') }} />
+              </label>
+              <label className="inline-field" htmlFor="admin-filter-created-to">
+                Date Created To:
+                <input id="admin-filter-created-to" type="date" value={usersCreatedToFilter} onChange={(event) => { setUsersCreatedToFilter(event.target.value); setUsersPage(1); setUsersPageInput('1') }} />
+              </label>
+            </div>
+            <div className="modal-actions admin-records-filter-actions">
+              <button type="button" className="ghost records-filter-clear" onClick={clearUsersFilters} disabled={!hasUsersFilters}>Clear Filters</button>
+              <button type="button" className="success-btn" onClick={() => setShowUsersFilters(false)}>Apply</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showInactiveFilters ? <div className="modal-backdrop" onClick={() => setShowInactiveFilters(false)} /> : null}
+      {showInactiveFilters ? (
+        <div className="pr-modal procedures-modal admin-records-filter-modal">
+          <div className="pr-modal-head">
+            <h2>Inactive Filters</h2>
+            <button type="button" onClick={() => setShowInactiveFilters(false)}>X</button>
+          </div>
+          <div className="pr-modal-body">
+            <div className="records-filter-panel admin-records-filter-panel">
+              <label className="inline-field" htmlFor="admin-inactive-filter-sex">
+                Sex:
+                <select id="admin-inactive-filter-sex" value={inactiveSexFilter} onChange={(event) => { setInactiveSexFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }}>
+                  <option value="">All</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </label>
+              <label className="inline-field" htmlFor="admin-inactive-filter-min-age">
+                Age Min:
+                <input id="admin-inactive-filter-min-age" type="number" min="0" value={inactiveMinAgeFilter} onChange={(event) => { setInactiveMinAgeFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }} />
+              </label>
+              <label className="inline-field" htmlFor="admin-inactive-filter-max-age">
+                Age Max:
+                <input id="admin-inactive-filter-max-age" type="number" min="0" value={inactiveMaxAgeFilter} onChange={(event) => { setInactiveMaxAgeFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }} />
+              </label>
+              <label className="inline-field" htmlFor="admin-inactive-filter-date-from">
+                Inactive Date From:
+                <input id="admin-inactive-filter-date-from" type="date" value={inactiveDateFromFilter} onChange={(event) => { setInactiveDateFromFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }} />
+              </label>
+              <label className="inline-field" htmlFor="admin-inactive-filter-date-to">
+                Inactive Date To:
+                <input id="admin-inactive-filter-date-to" type="date" value={inactiveDateToFilter} onChange={(event) => { setInactiveDateToFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }} />
+              </label>
+            </div>
+            <div className="modal-actions admin-records-filter-actions">
+              <button type="button" className="ghost records-filter-clear" onClick={clearInactiveFilters} disabled={!hasInactiveFilters}>Clear Filters</button>
+              <button type="button" className="success-btn" onClick={() => setShowInactiveFilters(false)}>Apply</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showArchiveFilters ? <div className="modal-backdrop" onClick={() => setShowArchiveFilters(false)} /> : null}
+      {showArchiveFilters ? (
+        <div className="pr-modal procedures-modal admin-records-filter-modal">
+          <div className="pr-modal-head">
+            <h2>Archive Filters</h2>
+            <button type="button" onClick={() => setShowArchiveFilters(false)}>X</button>
+          </div>
+          <div className="pr-modal-body">
+            <div className="records-filter-panel admin-records-filter-panel">
+              {archiveType === 'patients' ? (
+                <>
+                  <label className="inline-field" htmlFor="admin-archive-filter-sex">
+                    Sex:
+                    <select id="admin-archive-filter-sex" value={archiveSexFilter} onChange={(event) => { setArchiveSexFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }}>
+                      <option value="">All</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </label>
+                  <label className="inline-field" htmlFor="admin-archive-filter-min-age">
+                    Age Min:
+                    <input id="admin-archive-filter-min-age" type="number" min="0" value={archiveMinAgeFilter} onChange={(event) => { setArchiveMinAgeFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }} />
+                  </label>
+                  <label className="inline-field" htmlFor="admin-archive-filter-max-age">
+                    Age Max:
+                    <input id="admin-archive-filter-max-age" type="number" min="0" value={archiveMaxAgeFilter} onChange={(event) => { setArchiveMaxAgeFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }} />
+                  </label>
+                </>
+              ) : null}
+              {archiveType === 'users' ? (
+                <label className="inline-field" htmlFor="admin-archive-filter-role">
+                  Role:
+                  <select id="admin-archive-filter-role" value={archiveRoleFilter} onChange={(event) => { setArchiveRoleFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }}>
+                    <option value="">All</option>
+                    {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <label className="inline-field" htmlFor="admin-archive-filter-date-from">
+                Archive Date From:
+                <input id="admin-archive-filter-date-from" type="date" value={archiveDateFromFilter} onChange={(event) => { setArchiveDateFromFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }} />
+              </label>
+              <label className="inline-field" htmlFor="admin-archive-filter-date-to">
+                Archive Date To:
+                <input id="admin-archive-filter-date-to" type="date" value={archiveDateToFilter} onChange={(event) => { setArchiveDateToFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }} />
+              </label>
+            </div>
+            <div className="modal-actions admin-records-filter-actions">
+              <button type="button" className="ghost records-filter-clear" onClick={clearArchiveFilters} disabled={!hasArchiveFilters}>Clear Filters</button>
+              <button type="button" className="success-btn" onClick={() => setShowArchiveFilters(false)}>Apply</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {modal ? <div className="modal-backdrop" onClick={closeModal} /> : null}
 

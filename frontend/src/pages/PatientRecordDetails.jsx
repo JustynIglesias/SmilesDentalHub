@@ -1919,6 +1919,8 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     <div class="field"><strong>Office Address:</strong> ${escapeHtml(patient.officeAddress || '-')}</div>
     <div class="field"><strong>Guardian:</strong> ${escapeHtml(patient.guardianName || '-')}</div>
     <div class="field"><strong>Guardian Mobile:</strong> ${escapeHtml(formatPhilippineMobileDisplay(patient.guardianMobileNumber))}</div>
+    <div class="field"><strong>Guardian Occupation:</strong> ${escapeHtml(patient.guardianOccupation || '-')}</div>
+    <div class="field"><strong>Guardian Address:</strong> ${escapeHtml(patient.guardianOfficeAddress || '-')}</div>
     <div class="field"><strong>Health Conditions:</strong> ${escapeHtml(healthChecked)}</div>
     <div class="field"><strong>Allergens:</strong> ${escapeHtml(allergenChecked)}</div>
   </div>
@@ -2067,7 +2069,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
           {tab === 'patient' ? <button type="button" className="view" onClick={handleExport}>Export</button> : null}
           {tab === 'dental' ? (
             <div className="dental-actions-group">
-              <label className="inline-field" htmlFor="dental-record-history">
+              <label className="inline-field dental-history-select" htmlFor="dental-record-history">
                 History:
                 <select
                   id="dental-record-history"
@@ -2117,18 +2119,23 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                     <button type="button" className="mini-edit-btn" onClick={() => openPatientModal('details')}>&#9998;</button>
                   </div>
                   <div className="pr-detail-list">
-                    <div className="pr-detail-item"><span className="pr-detail-label">Nickname</span><span className="pr-detail-value">{patient.nickname || '-'}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Sex</span><span className="pr-detail-value">{patient.sex || '-'}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Age</span><span className="pr-detail-value">{calculateAge(patient.birthdate)}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Civil Status</span><span className="pr-detail-value">{patient.civilStatus || '-'}</span></div>
+                    <div className="pr-detail-item pr-detail-item-compact"><span className="pr-detail-label">Nickname</span><span className="pr-detail-value">{patient.nickname || '-'}</span></div>
+                    <div className="pr-detail-item pr-detail-item-compact"><span className="pr-detail-label">Sex</span><span className="pr-detail-value">{patient.sex || '-'}</span></div>
+                    <div className="pr-detail-item pr-detail-item-compact"><span className="pr-detail-label">Age</span><span className="pr-detail-value">{calculateAge(patient.birthdate)}</span></div>
+                    <div className="pr-detail-item pr-detail-item-compact"><span className="pr-detail-label">Civil Status</span><span className="pr-detail-value">{patient.civilStatus || '-'}</span></div>
                     <div className="pr-detail-item"><span className="pr-detail-label">Birthdate</span><span className="pr-detail-value">{formatDateOnlyLong(patient.birthdate)}</span></div>
-                    <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Mobile Number</span><span className="pr-detail-value">{patient.mobile || '-'}</span></div>
                     <div className="pr-detail-item"><span className="pr-detail-label">Occupation</span><span className="pr-detail-value">{patient.occupation || '-'}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Office Address</span><span className="pr-detail-value">{patient.officeAddress || '-'}</span></div>
-                    <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Address</span><span className="pr-detail-value">{patient.address || '-'}</span></div>
+                    <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Mobile Number</span><span className="pr-detail-value">{patient.mobile || '-'}</span></div>
+                    <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Current Home Address</span><span className="pr-detail-value">{patient.address || '-'}</span></div>
+                    <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Office Address</span><span className="pr-detail-value">{patient.officeAddress || '-'}</span></div>
                     <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Email</span><span className="pr-detail-value">{patient.email || '-'}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Guardian Name</span><span className="pr-detail-value">{patient.guardianName || '-'}</span></div>
-                    <div className="pr-detail-item"><span className="pr-detail-label">Guardian Mobile</span><span className="pr-detail-value">{patient.guardianMobileNumber || '-'}</span></div>
+                    <div className="pr-detail-divider" aria-hidden="true" />
+                    <div className="pr-detail-group pr-detail-group-three">
+                      <div className="pr-detail-item"><span className="pr-detail-label">Guardian Name</span><span className="pr-detail-value">{patient.guardianName || '-'}</span></div>
+                      <div className="pr-detail-item"><span className="pr-detail-label">Guardian Mobile</span><span className="pr-detail-value">{patient.guardianMobileNumber || '-'}</span></div>
+                      <div className="pr-detail-item"><span className="pr-detail-label">Guardian Occupation</span><span className="pr-detail-value">{patient.guardianOccupation || '-'}</span></div>
+                    </div>
+                    <div className="pr-detail-item pr-detail-item-wide"><span className="pr-detail-label">Guardian Address</span><span className="pr-detail-value">{patient.guardianOfficeAddress || '-'}</span></div>
                   </div>
                 </article>
                 <div className="pr-stack">
