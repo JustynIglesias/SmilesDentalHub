@@ -24,7 +24,7 @@ const normalizeLegendCode = (value) => `${value ?? ''}`.trim().toUpperCase()
 const normalizeConditionName = (value) => `${value ?? ''}`.trim().replace(/\s+/g, ' ').toLowerCase()
 const sanitizeLegendCodeInput = (value) => `${value ?? ''}`.toUpperCase().slice(0, 3)
 
-function Procedures() {
+function Procedures({ currentProfile }) {
   const [tab, setTab] = useState('services')
   const [services, setServices] = useState([])
   const [legends, setLegends] = useState([])
@@ -44,6 +44,7 @@ function Procedures() {
   const [errorMessage, setErrorMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const isAdmin = currentProfile?.role === 'admin'
 
   const closeModal = () => {
     setModal(null)
@@ -183,6 +184,10 @@ function Procedures() {
   }
 
   const openArchive = (item) => {
+    if (!isAdmin) {
+      showErrorModal('Only admins can archive procedures and dental chart legends.')
+      return
+    }
     setSelectedItem(item)
     setModal('archive')
   }
@@ -348,6 +353,10 @@ function Procedures() {
 
   const confirmArchive = async () => {
     if (!selectedItem) return
+    if (!isAdmin) {
+      showErrorModal('Only admins can archive procedures and dental chart legends.')
+      return
+    }
 
     if (tab === 'services') {
       const { error: updateError } = await supabase
@@ -436,7 +445,7 @@ function Procedures() {
                     <span>{tab === 'services' ? formatPrice(item.price) : item.condition_name}</span>
                     <span className="row-actions">
                       <button type="button" className="icon-btn" onClick={() => openEdit(item)}>&#9998;</button>
-                      <button type="button" className="icon-btn danger" onClick={() => openArchive(item)}>&#8681;</button>
+                      {isAdmin ? <button type="button" className="icon-btn danger" onClick={() => openArchive(item)}>&#8681;</button> : null}
                     </span>
                   </div>
                 ))}

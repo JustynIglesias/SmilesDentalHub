@@ -169,9 +169,11 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
   const [pendingEmailVerification, setPendingEmailVerification] = useState('')
   const [error, setError] = useState('')
   const [emailVerificationError, setEmailVerificationError] = useState('')
+  const [emailVerificationInfo, setEmailVerificationInfo] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false)
   const [isVerifyingEmailCode, setIsVerifyingEmailCode] = useState(false)
+  const [isResendingEmailCode, setIsResendingEmailCode] = useState(false)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
@@ -196,6 +198,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
     setPendingEmailVerification('')
     setEmailVerificationCode('')
     setEmailVerificationError('')
+    setEmailVerificationInfo('')
     setIsEmailVerificationModalOpen(false)
   }, [currentProfile])
 
@@ -212,6 +215,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
     setIsEmailVerificationModalOpen(false)
     setEmailVerificationCode('')
     setEmailVerificationError('')
+    setEmailVerificationInfo('')
     setPendingEmailVerification('')
   }
 
@@ -323,6 +327,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
     setIsUpdatingEmail(true)
     setError('')
     setEmailVerificationError('')
+    setEmailVerificationInfo('')
 
     try {
       const { data, error: sessionError } = await supabase.auth.getSession()
@@ -355,6 +360,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
       setPendingEmailVerification(trimmedNewEmail)
       setEmailVerificationCode('')
       setEmailVerificationError('')
+      setEmailVerificationInfo(`A verification code was sent to ${trimmedNewEmail}.`)
       setIsEmailVerificationModalOpen(true)
       setIsUpdatingEmail(false)
     } catch {
@@ -381,6 +387,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
 
     setIsVerifyingEmailCode(true)
     setEmailVerificationError('')
+    setEmailVerificationInfo('')
 
     try {
       const { data, error: sessionError } = await supabase.auth.getSession()
@@ -416,6 +423,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
       setNewEmail('')
       setPendingEmailVerification('')
       setEmailVerificationCode('')
+      setEmailVerificationInfo('')
       setIsEmailVerificationModalOpen(false)
       setSuccessMessage('Email updated successfully.')
       setIsSuccessModalOpen(true)
@@ -423,6 +431,54 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
     } catch {
       setEmailVerificationError('Unable to verify email change.')
       setIsVerifyingEmailCode(false)
+    }
+  }
+
+  const handleResendEmailVerificationCode = async () => {
+    const trimmedPendingEmail = pendingEmailVerification.trim().toLowerCase()
+
+    if (!trimmedPendingEmail) {
+      setEmailVerificationError('No pending email verification was found.')
+      return
+    }
+
+    setIsResendingEmailCode(true)
+    setEmailVerificationError('')
+    setEmailVerificationInfo('')
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession()
+      const accessToken = data?.session?.access_token
+
+      if (sessionError || !accessToken) {
+        setEmailVerificationError('Your session expired. Please log in again.')
+        setIsResendingEmailCode(false)
+        return
+      }
+
+      const response = await fetch('/api/auth/request-email-change-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email: trimmedPendingEmail,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setEmailVerificationError(payload?.error || 'Unable to resend verification code.')
+        setIsResendingEmailCode(false)
+        return
+      }
+
+      setEmailVerificationInfo(`A new verification code was sent to ${trimmedPendingEmail}.`)
+      setIsResendingEmailCode(false)
+    } catch {
+      setEmailVerificationError('Unable to resend verification code.')
+      setIsResendingEmailCode(false)
     }
   }
 
@@ -749,10 +805,14 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
                 </label>
 
                 {emailVerificationError ? <p className="nav-password-error settings-error">{emailVerificationError}</p> : null}
+                {emailVerificationInfo ? <p className="onboarding-success">{emailVerificationInfo}</p> : null}
 
                 <div className="modal-actions">
-                  <button type="button" className="ghost" onClick={closeEmailVerificationModal} disabled={isVerifyingEmailCode}>Cancel</button>
-                  <button type="submit" className="success-btn" disabled={isVerifyingEmailCode}>
+                  <button type="button" className="ghost" onClick={closeEmailVerificationModal} disabled={isVerifyingEmailCode || isResendingEmailCode}>Cancel</button>
+                  <button type="button" className="ghost" onClick={() => { void handleResendEmailVerificationCode() }} disabled={isVerifyingEmailCode || isResendingEmailCode}>
+                    {isResendingEmailCode ? 'Resending...' : 'Resend Code'}
+                  </button>
+                  <button type="submit" className="success-btn" disabled={isVerifyingEmailCode || isResendingEmailCode}>
                     {isVerifyingEmailCode ? 'Verifying...' : 'Verify Code'}
                   </button>
                 </div>

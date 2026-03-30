@@ -229,7 +229,7 @@ function Admin() {
   const [inactivePageInput, setInactivePageInput] = useState('1')
   const [archivePageInput, setArchivePageInput] = useState('1')
   const [usersSearchTerm, setUsersSearchTerm] = useState('')
-  const [usersSortBy, setUsersSortBy] = useState('staffId')
+  const [usersSortBy, setUsersSortBy] = useState('created')
   const [usersNameSortDirection, setUsersNameSortDirection] = useState('asc')
   const [usersStaffIdSortDirection, setUsersStaffIdSortDirection] = useState('desc')
   const [usersCreatedSortDirection, setUsersCreatedSortDirection] = useState('desc')
@@ -252,7 +252,6 @@ function Admin() {
   const [isEditingUser, setIsEditingUser] = useState(false)
   const [invalidAddUserFields, setInvalidAddUserFields] = useState({})
   const [addUserValidationMessage, setAddUserValidationMessage] = useState('')
-  const [isTestingWelcomeEmail, setIsTestingWelcomeEmail] = useState(false)
   const [userForm, setUserForm] = useState({
     user_id: '',
     first_name: '',
@@ -533,59 +532,6 @@ function Admin() {
     })
     await loadAll()
     showSuccess('Added successfully.')
-  }
-
-  const sendWelcomeEmailTest = async () => {
-    const email = userForm.email.trim().toLowerCase()
-
-    if (!email) {
-      setInvalidAddUserFields((previous) => ({ ...previous, email: true }))
-      setAddUserValidationMessage('Please fill out required fields.')
-      setModal('add-user-validation')
-      return
-    }
-
-    if (!EMAIL_PATTERN.test(email)) {
-      setInvalidAddUserFields((previous) => ({ ...previous, email: true }))
-      setAddUserValidationMessage('Please enter a valid email address.')
-      setModal('add-user-validation')
-      return
-    }
-
-    try {
-      setIsTestingWelcomeEmail(true)
-      const { data: sessionData } = await supabase.auth.getSession()
-      const accessToken = sessionData?.session?.access_token || ''
-
-      if (!accessToken) {
-        setAddUserValidationMessage('Unable to verify your session. Please log in again.')
-        setModal('add-user-validation')
-        return
-      }
-
-      const response = await fetch('/api/auth/admin-send-user-welcome-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ email }),
-      })
-      const payload = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        setAddUserValidationMessage(payload?.error || 'Unable to send welcome email.')
-        setModal('add-user-validation')
-        return
-      }
-
-      showSuccess(`Test email sent to ${email}.`)
-    } catch {
-      setAddUserValidationMessage('Unable to send welcome email.')
-      setModal('add-user-validation')
-    } finally {
-      setIsTestingWelcomeEmail(false)
-    }
   }
 
   const saveUserEdit = async () => {
@@ -1542,7 +1488,7 @@ function Admin() {
                       <>
                         <span>{row.service_name}</span>
                         <span>{formatDate(row.updated_at)}</span>
-                        <span><button type="button" className="view" onClick={() => openConfirmRetrieve(row)}>Retrieve</button></span>
+                        <span><button type="button" className="view" onClick={() => openConfirmRetrieve({ ...row, kind: 'services' })}>Retrieve</button></span>
                       </>
                     ) : null}
                     {archiveType === 'dentalCondition' ? (
@@ -1550,7 +1496,7 @@ function Admin() {
                         <span>{row.code}</span>
                         <span>{row.condition_name}</span>
                         <span>{formatDate(row.updated_at)}</span>
-                        <span><button type="button" className="view" onClick={() => openConfirmRetrieve(row)}>Retrieve</button></span>
+                        <span><button type="button" className="view" onClick={() => openConfirmRetrieve({ ...row, kind: 'dentalCondition' })}>Retrieve</button></span>
                       </>
                     ) : null}
                     {(archiveType === 'patients' || archiveType === 'users') ? (
@@ -1560,7 +1506,7 @@ function Admin() {
                         <span>{archiveType === 'patients' ? (row.sex === 'Male' ? 'M' : row.sex === 'Female' ? 'F' : row.sex) : row.username}</span>
                         <span>{archiveType === 'patients' ? calculateAge(row.birth_date) : (ROLE_LABELS[row.role] ?? row.role)}</span>
                         <span>{formatDate(archiveType === 'patients' ? row.archived_at : row.updated_at)}</span>
-                        <span><button type="button" className="view" onClick={() => openConfirmRetrieve(row)}>Retrieve</button></span>
+                        <span><button type="button" className="view" onClick={() => openConfirmRetrieve({ ...row, kind: archiveType })}>Retrieve</button></span>
                       </>
                     ) : null}
                   </div>
@@ -1659,6 +1605,7 @@ function Admin() {
           </div>
         </div>
       ) : null}
+
 
       {modal === 'success' ? (
         <div className="pr-modal procedures-modal success-modal">

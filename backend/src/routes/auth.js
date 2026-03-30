@@ -4,13 +4,22 @@ const { createSupabaseClient } = require('../supabase');
 const config = require('../config');
 const { getBearerToken, requireAccessToken } = require('../middleware/auth');
 const { sendSupabaseError } = require('../lib/response');
-const { isSmtpConfigured, sendEmailChangeVerificationEmail, sendWelcomeTestEmail } = require('../lib/mailer');
+const {
+  isSmtpConfigured,
+  sendEmailChangeVerificationEmail,
+  sendFailedLoginAlertEmail,
+  sendStaffOnboardingVerificationEmail,
+  sendWelcomeTestEmail,
+} = require('../lib/mailer');
 
 const router = express.Router();
 const emailChangeVerificationStore = new Map();
 const staffOnboardingVerificationStore = new Map();
+const failedLoginAttemptStore = new Map();
 const EMAIL_CHANGE_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
+const FAILED_LOGIN_ALERT_THRESHOLD = 4;
+const FAILED_LOGIN_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -27,6 +36,62 @@ function createSixDigitCode() {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
+function clearFailedLoginAttempts(email) {
+  const normalizedEmail = normalizeString(email).toLowerCase();
+  if (!normalizedEmail) return;
+  failedLoginAttemptStore.delete(normalizedEmail);
+}
+
+function registerFailedLoginAttempt(email) {
+  const normalizedEmail = normalizeString(email).toLowerCase();
+  if (!normalizedEmail) {
+    return { attempts: 0, shouldNotify: false };
+  }
+
+  const existing = failedLoginAttemptStore.get(normalizedEmail) || {
+    attempts: 0,
+    firstFailedAt: Date.now(),
+    lastAlertSentAt: 0,
+  };
+
+  const nextEntry = {
+    ...existing,
+    attempts: existing.attempts + 1,
+  };
+
+  let shouldNotify = false;
+  if (
+    nextEntry.attempts >= FAILED_LOGIN_ALERT_THRESHOLD
+    && Date.now() - (nextEntry.lastAlertSentAt || 0) >= FAILED_LOGIN_ALERT_COOLDOWN_MS
+  ) {
+    shouldNotify = true;
+    nextEntry.lastAlertSentAt = Date.now();
+  }
+
+  failedLoginAttemptStore.set(normalizedEmail, nextEntry);
+  return { attempts: nextEntry.attempts, shouldNotify };
+}
+
+async function findAuthUserByEmail(serviceClient, email) {
+  const normalizedEmail = normalizeString(email).toLowerCase();
+  if (!normalizedEmail) return null;
+
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const users = Array.isArray(data?.users) ? data.users : [];
+    const match = users.find((user) => normalizeString(user?.email).toLowerCase() === normalizedEmail);
+    if (match) return match;
+    if (users.length < perPage) return null;
+
+    page += 1;
+  }
+}
+
 async function updateEmailForUser({ userId, email }) {
   if (!config.supabaseServiceRoleKey) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for email updates.');
@@ -34,11 +99,41 @@ async function updateEmailForUser({ userId, email }) {
 
   const serviceClient = createSupabaseClient({ useServiceRole: true });
 
+  const { data: existingProfiles, error: existingProfilesError } = await serviceClient
+    .from('staff_profiles')
+    .select('user_id, email')
+    .eq('email', email)
+    .neq('user_id', userId)
+    .limit(1);
+  if (existingProfilesError) throw existingProfilesError;
+  if (Array.isArray(existingProfiles) && existingProfiles.length > 0) {
+    const duplicateError = new Error('Email already exists.');
+    duplicateError.status = 409;
+    throw duplicateError;
+  }
+
+  const existingAuthUser = await findAuthUserByEmail(serviceClient, email);
+  if (existingAuthUser && existingAuthUser.id !== userId) {
+    const duplicateError = new Error('This email already exists in Supabase Authentication.');
+    duplicateError.status = 409;
+    throw duplicateError;
+  }
+
   const { error: authUpdateError } = await serviceClient.auth.admin.updateUserById(userId, {
     email,
     email_confirm: true,
   });
-  if (authUpdateError) throw authUpdateError;
+  if (authUpdateError) {
+    if (/already been registered|user already registered|email address has already been registered|email.*exists/i.test(authUpdateError.message || '')) {
+      const duplicateError = new Error('Email already exists in Supabase Authentication.');
+      duplicateError.status = 409;
+      duplicateError.code = authUpdateError.code || null;
+      duplicateError.details = authUpdateError.details || null;
+      duplicateError.hint = authUpdateError.hint || null;
+      throw duplicateError;
+    }
+    throw authUpdateError;
+  }
 
   const { error: profileUpdateError } = await serviceClient
     .from('staff_profiles')
@@ -89,6 +184,58 @@ async function requireAdminRequester(accessToken) {
     requesterProfile,
     serviceClient,
   };
+}
+
+async function cleanupNullableUserReferences(serviceClient, userId) {
+  const nullableReferences = [
+    ['patients', 'updated_by'],
+    ['patients', 'archived_by'],
+    ['services', 'updated_by'],
+    ['tooth_conditions', 'updated_by'],
+    ['service_records', 'performed_by'],
+    ['service_records', 'updated_by'],
+    ['service_records', 'archived_by'],
+    ['dental_records', 'updated_by'],
+    ['dental_records', 'archived_by'],
+    ['patient_documents', 'updated_by'],
+    ['patient_documents', 'archived_by'],
+  ];
+
+  for (const [table, column] of nullableReferences) {
+    const { error } = await serviceClient
+      .from(table)
+      .update({ [column]: null })
+      .eq(column, userId);
+    if (error) throw error;
+  }
+}
+
+async function collectHardDeleteUserBlockers(serviceClient, userId) {
+  const nonNullableReferences = [
+    ['patients', 'created_by', 'patient records created by this user'],
+    ['patient_logs', 'created_by', 'patient log entries created by this user'],
+    ['services', 'created_by', 'services created by this user'],
+    ['tooth_conditions', 'created_by', 'dental chart legends created by this user'],
+    ['service_records', 'created_by', 'service records created by this user'],
+    ['dental_records', 'created_by', 'dental records created by this user'],
+    ['patient_documents', 'created_by', 'patient documents created by this user'],
+    ['archive_events', 'performed_by', 'archive history events performed by this user'],
+  ];
+
+  const blockers = [];
+
+  for (const [table, column, label] of nonNullableReferences) {
+    const { count, error } = await serviceClient
+      .from(table)
+      .select('*', { count: 'exact', head: true })
+      .eq(column, userId);
+    if (error) throw error;
+    if ((count || 0) > 0) {
+      blockers.push(`${count} ${label}`);
+    }
+  }
+
+  return blockers;
 }
 
 async function requireAuthenticatedRequester(accessToken) {
@@ -162,7 +309,23 @@ router.post('/login', async (req, res) => {
       password,
     });
 
-    if (error) return sendSupabaseError(res, error, 401);
+    if (error) {
+      const failedAttempt = registerFailedLoginAttempt(resolvedEmail);
+      if (failedAttempt.shouldNotify && isSmtpConfigured()) {
+        try {
+          await sendFailedLoginAlertEmail({
+            toEmail: resolvedEmail,
+            attemptedAt: new Date().toISOString(),
+            failedAttempts: failedAttempt.attempts,
+          });
+        } catch (_mailError) {
+          // Login should still fail normally even if the warning email could not be sent.
+        }
+      }
+      return sendSupabaseError(res, error, 401);
+    }
+
+    clearFailedLoginAttempts(resolvedEmail);
 
     return res.json({
       message: 'Login successful.',
@@ -350,6 +513,10 @@ router.post('/update-email', requireAccessToken, async (req, res) => {
 
 router.post('/request-email-change-code', requireAccessToken, async (req, res) => {
   try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for email updates.' });
+    }
+
     const nextEmail = normalizeString(req.body?.email).toLowerCase();
     if (!nextEmail) {
       return res.status(400).json({ error: 'email is required.' });
@@ -370,6 +537,20 @@ router.post('/request-email-change-code', requireAccessToken, async (req, res) =
     const currentEmail = normalizeString(requesterUserData.user.email).toLowerCase();
     if (currentEmail === nextEmail) {
       return res.status(400).json({ error: 'Please enter a different email address.' });
+    }
+
+    const serviceClient = createSupabaseClient({ useServiceRole: true });
+    const { data: existingProfiles, error: existingProfilesError } = await serviceClient
+      .from('staff_profiles')
+      .select('user_id, email')
+      .eq('email', nextEmail)
+      .neq('user_id', requesterUserData.user.id)
+      .limit(1);
+    if (existingProfilesError) {
+      return sendSupabaseError(res, existingProfilesError, 500);
+    }
+    if (Array.isArray(existingProfiles) && existingProfiles.length > 0) {
+      return res.status(409).json({ error: 'That email is already being used by another account.' });
     }
 
     const code = createSixDigitCode();
@@ -498,6 +679,13 @@ router.post('/start-staff-onboarding', requireAccessToken, async (req, res) => {
     }
 
     const { requesterUserData, requesterProfile } = requesterContext;
+    const existingAuthUser = await findAuthUserByEmail(requesterContext.serviceClient, nextEmail);
+
+    if (existingAuthUser && existingAuthUser.id !== requesterUserData.user.id) {
+      return res.status(409).json({
+        error: 'This email already exists in Supabase Authentication. Use a different email or delete the old auth user first.',
+      });
+    }
 
     const code = createSixDigitCode();
     const expiresAt = Date.now() + EMAIL_CHANGE_CODE_EXPIRY_MS;
@@ -512,7 +700,7 @@ router.post('/start-staff-onboarding', requireAccessToken, async (req, res) => {
       attempts: 0,
     });
 
-    await sendEmailChangeVerificationEmail({
+    await sendStaffOnboardingVerificationEmail({
       toEmail: nextEmail,
       code,
       requestedBy: requesterProfile.full_name || requesterUserData.user.email || 'Smiles Dental Hub',
@@ -651,6 +839,64 @@ router.post('/admin-update-user-email', requireAccessToken, async (req, res) => 
   }
 });
 
+router.post('/admin-delete-user', requireAccessToken, async (req, res) => {
+  try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for permanent user deletion.' });
+    }
+
+    const userId = normalizeString(req.body?.userId);
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required.' });
+    }
+
+    const adminContext = await requireAdminRequester(req.accessToken);
+    if (adminContext.errorResponse) {
+      const { status, payload } = adminContext.errorResponse;
+      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
+    }
+
+    const { requesterUserData, serviceClient } = adminContext;
+    if (requesterUserData.user.id === userId) {
+      return res.status(400).json({ error: 'You cannot permanently delete your own account.' });
+    }
+
+    const { data: targetProfile, error: targetProfileError } = await serviceClient
+      .from('staff_profiles')
+      .select('user_id, full_name, email, role, is_active')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (targetProfileError) return sendSupabaseError(res, targetProfileError);
+    if (!targetProfile) {
+      return res.status(404).json({ error: 'User profile not found.' });
+    }
+    if (targetProfile.is_active) {
+      return res.status(400).json({ error: 'Only archived users can be permanently deleted.' });
+    }
+
+    const blockers = await collectHardDeleteUserBlockers(serviceClient, userId);
+    if (blockers.length > 0) {
+      return res.status(409).json({
+        error: `Unable to permanently delete this user because it is still referenced by: ${blockers.join(', ')}.`,
+      });
+    }
+
+    await cleanupNullableUserReferences(serviceClient, userId);
+
+    const { error: deleteAuthUserError } = await serviceClient.auth.admin.deleteUser(userId);
+    if (deleteAuthUserError) return sendSupabaseError(res, deleteAuthUserError);
+
+    return res.json({
+      message: 'User deleted permanently.',
+      userId,
+      email: targetProfile.email || null,
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
 router.post('/admin-create-user', requireAccessToken, async (req, res) => {
   try {
     if (!config.supabaseServiceRoleKey) {
@@ -716,6 +962,14 @@ router.post('/admin-create-user', requireAccessToken, async (req, res) => {
       },
     });
     if (createUserError || !createdUserData?.user?.id) {
+      if (createUserError && /already been registered|user already registered|email address has already been registered/i.test(createUserError.message || '')) {
+        return res.status(409).json({
+          error: 'This email still exists in Supabase Authentication. Delete the user from Authentication > Users, not only from your app tables.',
+          code: createUserError.code || null,
+          details: createUserError.details || null,
+          hint: createUserError.hint || null,
+        });
+      }
       return sendSupabaseError(res, createUserError || { message: 'Unable to create user.' });
     }
 

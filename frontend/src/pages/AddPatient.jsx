@@ -61,14 +61,15 @@ const CHECKBOX_CONDITIONS = [
   'Rheumatic Fever',
   'Kidney Disease',
   'Stomach Trouble/Ulcers',
-  'Hepatitis/Liver Disease',
-  'AIDS or HIV Infection',
-  'Thyroid Problems',
+  'Heart Surgery/Heart Attack',
+  'Angina pectoris, chest pain',
+  'Sexually Transmitted Disease',
   'Joint Replacement/Implant',
+  'Hepatitis/Liver Disease',
+  'Thyroid Problems',
   'Cancer/Tumors',
-  'Hospitalization/Illness',
-  'Psychiatric Treatment',
-  'Allergy to Latex',
+  'Head Injuries',
+  'AIDS or HIV Infection',
   'Others',
 ]
 
@@ -80,6 +81,14 @@ const INITIAL_ALLERGEN_INFO = {
   aspirin: false,
   others: false,
   othersText: '',
+}
+
+const ALLERGEN_FIELD_MAP = {
+  'Local Anesthetic (ex. Lidocaine)': 'localAnesthetic',
+  'Penicillin/Antibiotics': 'penicillin',
+  'Sulfa Drugs': 'sulfaDrugs',
+  'Latex/Rubber': 'latex',
+  Aspirin: 'aspirin',
 }
 
 const INITIAL_PATIENT_INFO = {
@@ -119,6 +128,7 @@ const INITIAL_CHECKBOX_CONDITIONS = CHECKBOX_CONDITIONS.reduce((accumulator, con
   accumulator[condition] = false
   return accumulator
 }, {})
+const INITIAL_CHECKBOX_CONDITIONS_OTHER_TEXT = ''
 
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
 
@@ -289,6 +299,7 @@ function AddPatient() {
   const [medicalDetails, setMedicalDetails] = useState(INITIAL_MEDICAL_DETAILS)
   const [dentalDetails, setDentalDetails] = useState(INITIAL_DENTAL_DETAILS)
   const [checkedConditions, setCheckedConditions] = useState(INITIAL_CHECKBOX_CONDITIONS)
+  const [checkedConditionsOtherText, setCheckedConditionsOtherText] = useState(INITIAL_CHECKBOX_CONDITIONS_OTHER_TEXT)
   const [isDraftHydrated, setIsDraftHydrated] = useState(false)
   const [birthdateInput, setBirthdateInput] = useState('')
   const [invalidPatientFields, setInvalidPatientFields] = useState({})
@@ -331,6 +342,7 @@ function AddPatient() {
       setCheckedConditions(
         normalizeBooleanMap(parsedDraft.checkedConditions, INITIAL_CHECKBOX_CONDITIONS),
       )
+      setCheckedConditionsOtherText(`${parsedDraft.checkedConditionsOtherText || ''}`)
     } catch {
       sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
     } finally {
@@ -354,6 +366,7 @@ function AddPatient() {
       medicalDetails,
       dentalDetails,
       checkedConditions,
+      checkedConditionsOtherText,
     }
 
     sessionStorage.setItem(ADD_PATIENT_DRAFT_KEY, JSON.stringify(draft))
@@ -371,6 +384,7 @@ function AddPatient() {
     medicalDetails,
     medicalNotes,
     patientInfo,
+    checkedConditionsOtherText,
   ])
 
   useEffect(() => {
@@ -581,7 +595,13 @@ function AddPatient() {
     })
   }
   const toggleCondition = (condition) => {
-    setCheckedConditions((prev) => ({ ...prev, [condition]: !prev[condition] }))
+    setCheckedConditions((prev) => {
+      const nextValue = !prev[condition]
+      if (condition === 'Others' && !nextValue) {
+        setCheckedConditionsOtherText('')
+      }
+      return { ...prev, [condition]: nextValue }
+    })
   }
   const handleFinalSubmit = () => {
     if (!authorizationAccepted) {
@@ -677,10 +697,15 @@ function AddPatient() {
       guardian_mobile_number: isMinor ? formatPhilippineE164(patientInfo.guardianMobileNumber) : null,
       guardian_occupation: toTitleCase((isMinor ? patientInfo.guardianOccupation : '').trim()) || null,
       guardian_office_address: toTitleCase((isMinor ? patientInfo.guardianOfficeAddress : '').trim()) || null,
-      health_conditions: checkedConditions,
+      health_conditions: {
+        ...checkedConditions,
+        othersText: checkedConditions.Others ? toTitleCase(checkedConditionsOtherText.trim()) : '',
+      },
       allergen_info: {
-        ...allergenInfo,
-        othersText: toTitleCase(allergenInfo.othersText || ''),
+        values: Object.fromEntries(
+          Object.entries(ALLERGEN_FIELD_MAP).map(([label, key]) => [label, Boolean(allergenInfo[key])]),
+        ),
+        others: allergenInfo.others ? toTitleCase(allergenInfo.othersText || '') : '',
       },
       medical_history: {
         physician: toTitleCase(medicalDetails.physicianName.trim()),
@@ -1094,6 +1119,19 @@ function AddPatient() {
                   </label>
                 ))}
               </div>
+              {checkedConditions.Others ? (
+                <div className="history-top-grid">
+                  <label className="span-2">
+                    Please specify
+                    <input
+                      type="text"
+                      value={checkedConditionsOtherText}
+                      onChange={(event) => setCheckedConditionsOtherText(toTitleCase(event.target.value))}
+                      placeholder="Specify other condition"
+                    />
+                  </label>
+                </div>
+              ) : null}
             </section>
           </div>
         ) : null}

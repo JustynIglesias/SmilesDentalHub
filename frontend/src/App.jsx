@@ -15,6 +15,7 @@ import Settings from './pages/Settings'
 import { isAccessTokenExpired, missingSupabaseEnv, supabase } from './lib/supabaseClient'
 
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
+const LAST_PROTECTED_ROUTE_KEY = 'dent22.lastProtectedRoute'
 const PLACEHOLDER_EMAIL_DOMAINS = ['@smilesdentalhub.local', '@dent22.local']
 
 const isPlaceholderStaffEmail = (email = '') => {
@@ -124,7 +125,7 @@ function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser, onPro
           <Route path="/records" element={<PatientRecords />} />
           <Route path="/records/:id" element={<PatientRecordDetails currentRole={role} currentProfile={profile} />} />
           <Route path="/add-patient" element={<AddPatient />} />
-          <Route path="/procedure" element={<Procedures />} />
+          <Route path="/procedure" element={<Procedures currentProfile={profile} />} />
           <Route path="/logs" element={<PatientLogs />} />
           <Route path="/settings" element={<Settings currentProfile={profile} currentSessionUser={sessionUser} onProfileChange={onProfileChange} />} />
           {role === 'admin' ? <Route path="/admin" element={<Admin currentProfile={profile} />} /> : <Route path="/admin" element={<Navigate to="/home" replace />} />}
@@ -171,6 +172,12 @@ function AppRoutes() {
   const profileUserIdRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const path = `${location.pathname || ''}${location.search || ''}${location.hash || ''}`
+    if (!path || path === '/login' || path === '/reset-password') return
+    sessionStorage.setItem(LAST_PROTECTED_ROUTE_KEY, path)
+  }, [location.hash, location.pathname, location.search])
 
   const loadAccessContext = useCallback(async (userId) => {
     if (!supabase) return false
@@ -746,35 +753,49 @@ function AppRoutes() {
       return
     }
 
-    const { data: resolvedEmail, error: resolveError } = await supabase.rpc('resolve_login_email', {
-      p_username: loginInput,
-    })
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          login: loginInput,
+          password: form.password,
+        }),
+      })
 
-    const fallbackEmail = loginInput.includes('@') ? loginInput : ''
-    const emailForLogin = resolvedEmail || fallbackEmail
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(payload?.error || 'Incorrect username or password.')
+        return
+      }
 
-    if (resolveError && !emailForLogin) {
-      setError('Unable to resolve login account.')
-      return
-    }
+      const accessToken = payload?.session?.access_token || ''
+      const refreshToken = payload?.session?.refresh_token || ''
+      if (!accessToken || !refreshToken) {
+        setError('Login succeeded, but no session was returned.')
+        return
+      }
 
-    if (!emailForLogin) {
-      setError('Incorrect username or password.')
-      return
-    }
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: emailForLogin,
-      password: form.password,
-    })
-
-    if (signInError) {
-      setError('Incorrect username or password.')
+      if (sessionError) {
+        setError(sessionError.message || 'Unable to finish login.')
+        return
+      }
+    } catch {
+      setError('Unable to log in right now.')
       return
     }
 
     setError('')
-    navigate('/home', { replace: true })
+    const restorePath = sessionStorage.getItem(LAST_PROTECTED_ROUTE_KEY)
+    const nextPath = restorePath && restorePath !== '/login' ? restorePath : '/home'
+    navigate(nextPath, { replace: true })
   }
 
   const handleLogoutRequest = () => {
@@ -812,6 +833,15 @@ function AppRoutes() {
     setStaffOnboardingError('')
     setStaffOnboardingInfo('')
     navigate('/login', { replace: true })
+  }
+
+  const handleStaffOnboardingBackToDetails = (event) => {
+    event?.preventDefault?.()
+    event?.stopPropagation?.()
+    setStaffOnboardingStep('details')
+    setStaffOnboardingCode('')
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
   }
 
   if (isBootstrapping) {
@@ -957,11 +987,11 @@ function AppRoutes() {
                   {staffOnboardingError ? <p className="error">{staffOnboardingError}</p> : null}
                   {staffOnboardingInfo ? <p className="onboarding-success">{staffOnboardingInfo}</p> : null}
                   <div className="modal-actions">
-                    <button type="button" className="ghost" onClick={() => { void handleBackToLogin() }} disabled={isStaffOnboardingVerifying}>
+                    <button type="button" className="ghost onboarding-secondary-btn" onClick={() => { void handleBackToLogin() }} disabled={isStaffOnboardingVerifying}>
                       Back to Login
                     </button>
-                    <button type="button" className="ghost" onClick={() => { setStaffOnboardingStep('details'); setStaffOnboardingError(''); setStaffOnboardingInfo('') }} disabled={isStaffOnboardingVerifying}>
-                      Back
+                    <button type="button" className="ghost onboarding-secondary-btn" onClick={handleStaffOnboardingBackToDetails} disabled={isStaffOnboardingVerifying}>
+                      Back to Details
                     </button>
                     <button type="submit" className="success-btn" disabled={isStaffOnboardingVerifying}>
                       {isStaffOnboardingVerifying ? 'Verifying...' : 'Verify Code'}

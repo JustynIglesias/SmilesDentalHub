@@ -35,9 +35,17 @@ const HEALTH = [
   'Cancer/Tumors',
   'Head Injuries',
   'AIDS or HIV Infection',
+  'Others',
 ]
 
 const ALLERGENS = ['Local Anesthetic (ex. Lidocaine)', 'Penicillin/Antibiotics', 'Sulfa Drugs', 'Latex/Rubber', 'Aspirin']
+const LEGACY_ALLERGEN_FIELD_MAP = {
+  'Local Anesthetic (ex. Lidocaine)': 'localAnesthetic',
+  'Penicillin/Antibiotics': 'penicillin',
+  'Sulfa Drugs': 'sulfaDrugs',
+  'Latex/Rubber': 'latex',
+  Aspirin: 'aspirin',
+}
 const SEX_OPTIONS = ['Male', 'Female']
 const CIVIL_STATUS_OPTIONS = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated']
 
@@ -96,6 +104,10 @@ const TOOTH_X_POSITIONS_BY_CHART = {
   chart1: [3.3, 10.7, 18.1, 24.0, 28.7, 36.1, 40.7, 45.5, 54.1, 59.1, 64.1, 71.5, 77.1, 82.8, 91.2, 97.2],
   chart2: [4.0, 11.9, 19.5, 25.9, 30.7, 38.1, 42.9, 47.7, 52.2, 57.1, 62.3, 68.3, 73.3, 80.9, 89.6, 96.4],
 }
+const TOOTH_NUMBERS_BY_CHART = {
+  chart1: Array.from({ length: 16 }, (_, index) => index + 1),
+  chart2: Array.from({ length: 16 }, (_, index) => 32 - index),
+}
 
 const createToothMap = (defaultCode = '?') => Object.fromEntries(
   Array.from({ length: 32 }, (_, i) => i + 1).flatMap((tooth) => [[`top-${tooth}`, defaultCode], [`bottom-${tooth}`, defaultCode]]),
@@ -120,7 +132,14 @@ const syncToothMapWithLegendCodes = (toothMap, legendCodes, defaultCode) => {
 
 const createBooleanMap = (items, value = false) => Object.fromEntries(items.map((item) => [item, value]))
 const createAnswerMap = (questions, value = '') => Object.fromEntries(questions.map((_, index) => [index, value]))
-const todayIsoDate = () => new Date().toISOString().slice(0, 10)
+const toLocalIsoDate = (value = new Date()) => {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const todayIsoDate = () => toLocalIsoDate()
 const initialServiceLine = () => ({
   serviceId: '',
   quantity: 1,
@@ -330,6 +349,8 @@ const normalizeError = (error, fallback = 'Unexpected error occurred.') => {
   return fallback
 }
 
+const MISSING_AUDIT_USER_LABEL = 'User not found, it might be deleted'
+
 const formatPatientCode = (patientCode, patientId) => {
   const raw = `${patientCode || ''}`.trim()
   if (/^PT-\d{6}$/.test(raw)) return raw
@@ -445,6 +466,31 @@ const isAcceptedDocument = (file) => {
   return hasAcceptedExtension || hasAcceptedMimeType
 }
 
+const buildDentalChartExportRowsHtml = (toothNumbers, positions, toothMap, rowType) => toothNumbers.map((tooth, index) => {
+  const value = toothMap?.[`${rowType}-${tooth}`]
+  const displayValue = value && value !== '?' ? value : ''
+  return `<div class="export-drop-slot" style="left:${positions[index]}%">${displayValue}</div>`
+}).join('')
+
+const buildDentalChartExportSectionHtml = ({
+  chart,
+  toothNumbers,
+  positions,
+  toothMap,
+  keyPrefix,
+}) => {
+  const topRowHtml = buildDentalChartExportRowsHtml(toothNumbers, positions, toothMap, 'top')
+  const bottomRowHtml = buildDentalChartExportRowsHtml(toothNumbers, positions, toothMap, 'bottom')
+
+  return `
+    <div class="export-dental-section" data-key="${keyPrefix}">
+      <div class="export-drop-row export-drop-row-top">${topRowHtml}</div>
+      <img src="${chart.src}" alt="${chart.alt}" />
+      <div class="export-drop-row export-drop-row-bottom">${bottomRowHtml}</div>
+    </div>
+  `
+}
+
 function YesNoEditor({ questions, historyState, setHistoryState }) {
   return (
     <section className="history-block">
@@ -500,6 +546,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   const [error, setError] = useState('')
   const [patient, setPatient] = useState(initialPatient)
   const [health, setHealth] = useState(() => createBooleanMap(HEALTH))
+  const [healthOtherText, setHealthOtherText] = useState('')
   const [allergens, setAllergens] = useState(initialAllergens)
   const [dentalHistory, setDentalHistory] = useState(initialDentalHistory)
   const [medicalHistory, setMedicalHistory] = useState(initialMedicalHistory)
@@ -543,21 +590,22 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     if (!dentalRecordHistory.length) return null
     return dentalRecordHistory.find((entry) => entry.id === selectedDentalRecordId) ?? dentalRecordHistory[0]
   }, [dentalRecordHistory, selectedDentalRecordId])
-
   const takeSnapshot = useCallback(() => {
     setPatientSnapshot({
       patient: { ...patient },
       health: { ...health },
+      healthOtherText,
       allergens: { values: { ...allergens.values }, others: allergens.others },
       dentalHistory: { ...dentalHistory, answers: { ...dentalHistory.answers }, notes: { ...(dentalHistory.notes || {}) } },
       medicalHistory: { ...medicalHistory, answers: { ...medicalHistory.answers }, notes: { ...(medicalHistory.notes || {}) } },
     })
-  }, [allergens, dentalHistory, health, medicalHistory, patient])
+  }, [allergens, dentalHistory, health, healthOtherText, medicalHistory, patient])
 
   const restoreSnapshot = useCallback(() => {
     if (!patientSnapshot) return
     setPatient({ ...patientSnapshot.patient })
     setHealth({ ...patientSnapshot.health })
+    setHealthOtherText(`${patientSnapshot.healthOtherText || ''}`)
     setAllergens({ values: { ...patientSnapshot.allergens.values }, others: patientSnapshot.allergens.others })
     setDentalHistory({
       ...patientSnapshot.dentalHistory,
@@ -639,51 +687,66 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       .eq('id', id)
       .maybeSingle()
 
-    if (fetchError) throw fetchError
-    if (!data) throw new Error('Patient not found.')
+    let row = data
+    if (fetchError) {
+      throw fetchError
+    }
+    if (!row) throw new Error('Patient not found.')
 
     const nextPatient = {
-      dbId: data.id,
-      code: data.patient_code,
-      lastName: data.last_name || '',
-      firstName: data.first_name || '',
-      middleName: data.middle_name || '',
-      suffix: data.suffix || '',
-      address: data.address || '',
-      mobile: data.phone || '',
-      email: data.email || '',
-      civilStatus: normalizeCivilStatus(data.civil_status),
-      occupation: data.occupation || '',
-      officeAddress: data.office_address || '',
-      sex: normalizeSex(data.sex),
-      birthdate: data.birth_date || '',
-      nickname: data.nickname || '',
-      guardianName: data.guardian_name || data.emergency_contact_name || '',
-      guardianMobileNumber: data.guardian_mobile_number || data.emergency_contact_phone || '',
-      guardianOccupation: data.guardian_occupation || '',
-      guardianOfficeAddress: data.guardian_office_address || '',
-      authorizationAccepted: Boolean(data.authorization_accepted),
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      createdBy: data.created_by || '',
-      updatedBy: data.updated_by || '',
+      dbId: row.id,
+      code: row.patient_code,
+      lastName: row.last_name || '',
+      firstName: row.first_name || '',
+      middleName: row.middle_name || '',
+      suffix: row.suffix || '',
+      address: row.address || '',
+      mobile: row.phone || '',
+      email: row.email || '',
+      civilStatus: normalizeCivilStatus(row.civil_status),
+      occupation: row.occupation || '',
+      officeAddress: row.office_address || '',
+      sex: normalizeSex(row.sex),
+      birthdate: row.birth_date || '',
+      nickname: row.nickname || '',
+      guardianName: row.guardian_name || row.emergency_contact_name || '',
+      guardianMobileNumber: row.guardian_mobile_number || row.emergency_contact_phone || '',
+      guardianOccupation: row.guardian_occupation || '',
+      guardianOfficeAddress: row.guardian_office_address || '',
+      authorizationAccepted: Boolean(row.authorization_accepted),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      createdBy: row.created_by || '',
+      updatedBy: row.updated_by || '',
     }
 
     const nextHealth = createBooleanMap(HEALTH)
-    const rawHealth = data.health_conditions && typeof data.health_conditions === 'object' ? data.health_conditions : {}
+    const rawHealth = row.health_conditions && typeof row.health_conditions === 'object' ? row.health_conditions : {}
     HEALTH.forEach((item) => {
       nextHealth[item] = Boolean(rawHealth[item])
     })
+    const nextHealthOtherText = typeof rawHealth.othersText === 'string' ? rawHealth.othersText : ''
 
     const nextAllergens = initialAllergens()
-    const rawAllergen = data.allergen_info && typeof data.allergen_info === 'object' ? data.allergen_info : {}
+    const rawAllergen = row.allergen_info && typeof row.allergen_info === 'object' ? row.allergen_info : {}
     const rawAllergenValues = rawAllergen.values && typeof rawAllergen.values === 'object' ? rawAllergen.values : rawAllergen
     ALLERGENS.forEach((item) => {
-      nextAllergens.values[item] = Boolean(rawAllergenValues?.[item])
+      const legacyKey = LEGACY_ALLERGEN_FIELD_MAP[item]
+      nextAllergens.values[item] = Boolean(
+        rawAllergenValues?.[item]
+        ?? rawAllergenValues?.[legacyKey]
+        ?? rawAllergen?.[item]
+        ?? rawAllergen?.[legacyKey],
+      )
     })
-    nextAllergens.others = `${rawAllergen.others ?? ''}`
+    const rawOthers = typeof rawAllergen.others === 'string'
+      ? rawAllergen.others
+      : typeof rawAllergen.othersText === 'string'
+        ? rawAllergen.othersText
+        : ''
+    nextAllergens.others = `${rawOthers}`
 
-    const rawDentalHistory = data.dental_history && typeof data.dental_history === 'object' ? data.dental_history : {}
+    const rawDentalHistory = row.dental_history && typeof row.dental_history === 'object' ? row.dental_history : {}
     const nextDentalHistory = {
       previous: `${rawDentalHistory.previous ?? ''}`,
       lastExam: `${rawDentalHistory.lastExam ?? ''}`,
@@ -692,7 +755,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       notes: normalizeNotes(rawDentalHistory.notes),
     }
 
-    const rawMedicalHistory = data.medical_history && typeof data.medical_history === 'object' ? data.medical_history : {}
+    const rawMedicalHistory = row.medical_history && typeof row.medical_history === 'object' ? row.medical_history : {}
     const nextMedicalHistory = {
       physician: `${rawMedicalHistory.physician ?? ''}`,
       specialty: `${rawMedicalHistory.specialty ?? ''}`,
@@ -702,16 +765,18 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     }
 
     const staffMap = await fetchStaffNames([nextPatient.updatedBy || nextPatient.createdBy])
-    setLastChangedBy(staffMap[nextPatient.updatedBy || nextPatient.createdBy] || 'System')
+    setLastChangedBy(staffMap[nextPatient.updatedBy || nextPatient.createdBy] || MISSING_AUDIT_USER_LABEL)
 
     setPatient(nextPatient)
     setHealth(nextHealth)
+    setHealthOtherText(nextHealthOtherText)
     setAllergens(nextAllergens)
     setDentalHistory(nextDentalHistory)
     setMedicalHistory(nextMedicalHistory)
     setPatientSnapshot({
       patient: nextPatient,
       health: nextHealth,
+      healthOtherText: nextHealthOtherText,
       allergens: nextAllergens,
       dentalHistory: nextDentalHistory,
       medicalHistory: nextMedicalHistory,
@@ -813,9 +878,20 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       .is('archived_at', null)
       .order('visit_at', { ascending: false })
 
-    if (fetchError) throw fetchError
+      let rows = data ?? []
+      if (fetchError?.code === '42703') {
+        const fallbackResult = await supabase
+          .from('service_records')
+          .select('id, service_id, quantity, unit_price, discount_amount, amount, notes, visit_at, updated_by, services(service_name, price)')
+          .eq('patient_id', id)
+          .is('archived_at', null)
+          .order('visit_at', { ascending: false })
+        if (fallbackResult.error) throw fallbackResult.error
+        rows = fallbackResult.data ?? []
+      } else if (fetchError) {
+        throw fetchError
+      }
 
-    const rows = data ?? []
     const staffMap = await fetchStaffNames(rows.map((row) => row.updated_by))
     const groupedByDate = new Map()
 
@@ -845,7 +921,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
           date: visitDate,
           total: 0,
           lines: [],
-          by: staffMap[row.updated_by] || 'System',
+          by: staffMap[row.updated_by] || MISSING_AUDIT_USER_LABEL,
           updatedAt: row.visit_at || null,
         })
       }
@@ -866,7 +942,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 
       if (row.visit_at && (!bucket.updatedAt || new Date(row.visit_at).getTime() > new Date(bucket.updatedAt).getTime())) {
         bucket.updatedAt = row.visit_at
-        bucket.by = staffMap[row.updated_by] || 'System'
+        bucket.by = staffMap[row.updated_by] || MISSING_AUDIT_USER_LABEL
       }
     })
 
@@ -884,17 +960,26 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       .eq('patient_id', id)
       .is('archived_at', null)
       .order('recorded_at', { ascending: false })
-      
 
-    if (fetchError) throw fetchError
-
-    const rows = data ?? []
+    let rows = data ?? []
+    if (fetchError?.code === '42703') {
+      const fallbackResult = await supabase
+        .from('dental_records')
+        .select('id, findings, treatment, chart_data, recorded_at, updated_by')
+        .eq('patient_id', id)
+        .is('archived_at', null)
+        .order('recorded_at', { ascending: false })
+      if (fallbackResult.error) throw fallbackResult.error
+      rows = fallbackResult.data ?? []
+    } else if (fetchError) {
+      throw fetchError
+    }
     if (!rows.length) {
       setDentalRecordHistory([])
       setSelectedDentalRecordId('')
       setDentalRecord(cloneDentalRecord(DEFAULT_DENTAL_RECORD))
       setDentalRecordForm(cloneDentalRecord(DEFAULT_DENTAL_RECORD))
-      setDentalRecordMeta({ updatedAt: '', updatedByName: '-' })
+      setDentalRecordMeta({ updatedAt: '', updatedByName: MISSING_AUDIT_USER_LABEL })
       return
     }
 
@@ -902,13 +987,13 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     const latestByDate = new Map()
 
     rows.forEach((row) => {
-      const dateKey = `${row.recorded_at ?? ''}`.slice(0, 10)
+      const dateKey = toLocalIsoDate(row.recorded_at)
       if (!dateKey || latestByDate.has(dateKey)) return
 
       latestByDate.set(dateKey, {
         id: row.id,
         recordedAt: row.recorded_at,
-        updatedByName: staffMap[row.updated_by] || 'System',
+        updatedByName: staffMap[row.updated_by] || MISSING_AUDIT_USER_LABEL,
         record: normalizeDentalRecord({
           ...(row.chart_data ?? {}),
           notes: row.findings ?? row.chart_data?.notes ?? '',
@@ -974,7 +1059,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     if (!selectedDentalRecordEntry) {
       setDentalRecord(cloneDentalRecord(DEFAULT_DENTAL_RECORD))
       setDentalRecordForm(cloneDentalRecord(DEFAULT_DENTAL_RECORD))
-      setDentalRecordMeta({ updatedAt: '', updatedByName: '-' })
+      setDentalRecordMeta({ updatedAt: '', updatedByName: MISSING_AUDIT_USER_LABEL })
       return
     }
 
@@ -994,9 +1079,9 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     setLastExamInput(formatDateInputDisplay(dentalHistory.lastExam))
   }, [dentalHistory.lastExam])
 
-  const renderToothRow = (start, keyPrefix, rowType, positions, toothValues, onToothChange, disabled = false) => (
+  const renderToothRow = (toothNumbers, keyPrefix, rowType, positions, toothValues, onToothChange, disabled = false) => (
     <div className={`pr-drop-row ${rowType === 'top' ? 'pr-drop-row-top' : 'pr-drop-row-bottom'}`}>
-      {Array.from({ length: 16 }, (_, index) => ({ tooth: index + start, left: positions[index] })).map(({ tooth, left }) => (
+      {toothNumbers.map((tooth, index) => ({ tooth, left: positions[index] })).map(({ tooth, left }) => (
         <div key={`${keyPrefix}-${tooth}`} className="pr-drop-slot" style={{ left: `${left}%` }}>
           <select value={toothValues[`${rowType}-${tooth}`]} disabled={disabled} onChange={(event) => onToothChange(`${rowType}-${tooth}`, event.target.value)}>
             {legendCodes.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -1006,11 +1091,11 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     </div>
   )
 
-  const renderDentalSection = (chart, start, keyPrefix, positions, toothValues, onToothChange, disabled = false) => (
+  const renderDentalSection = (chart, toothNumbers, keyPrefix, positions, toothValues, onToothChange, disabled = false) => (
     <div key={keyPrefix} className="pr-dental-section">
-      {renderToothRow(start, `${keyPrefix}-top`, 'top', positions, toothValues, onToothChange, disabled)}
+      {renderToothRow(toothNumbers, `${keyPrefix}-top`, 'top', positions, toothValues, onToothChange, disabled)}
       <img src={chart.src} alt={chart.alt} />
-      {renderToothRow(start, `${keyPrefix}-bottom`, 'bottom', positions, toothValues, onToothChange, disabled)}
+      {renderToothRow(toothNumbers, `${keyPrefix}-bottom`, 'bottom', positions, toothValues, onToothChange, disabled)}
     </div>
   )
 
@@ -1162,16 +1247,17 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     try {
       const { data: authData } = await supabase.auth.getUser()
       const actorId = authData?.user?.id ?? null
+      const updatePayload = { ...patch, updated_by: actorId }
 
-      const { error: updateError } = await supabase
+      let { error: updateError } = await supabase
         .from('patients')
-        .update({ ...patch, updated_by: actorId })
+        .update(updatePayload)
         .eq('id', id)
 
       if (updateError) throw updateError
 
-      await loadPatient()
       setModal(null)
+      await loadPatient()
     } catch (updateError) {
       setError(normalizeError(updateError, 'Unable to update patient information.'))
     } finally {
@@ -1214,7 +1300,12 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const saveHealth = async () => {
-    await updatePatientSection({ health_conditions: health })
+    await updatePatientSection({
+      health_conditions: {
+        ...health,
+        othersText: health.Others ? toTitleCase(healthOtherText.trim()) : '',
+      },
+    })
   }
 
   const saveAllergens = async () => {
@@ -1362,13 +1453,14 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       if (isEditMode && serviceForm.originalDate !== serviceForm.date) {
         const sourceRows = await loadRowsByDate(serviceForm.originalDate)
         if (sourceRows.length > 0) {
-          const { error: archiveSourceError } = await supabase
+          const archiveSourcePayload = {
+            archived_at: archivedAt,
+            archived_by: actorId,
+            updated_by: actorId,
+          }
+          let { error: archiveSourceError } = await supabase
             .from('service_records')
-            .update({
-              archived_at: archivedAt,
-              archived_by: actorId,
-              updated_by: actorId,
-            })
+            .update(archiveSourcePayload)
             .in('id', sourceRows.map((row) => row.id))
 
           if (archiveSourceError) throw archiveSourceError
@@ -1414,7 +1506,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
         }
 
         if (primaryRow) {
-          const { error: updateError } = await supabase
+          let { error: updateError } = await supabase
             .from('service_records')
             .update(payload)
             .eq('id', primaryRow.id)
@@ -1423,13 +1515,14 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
           if (updateError) throw updateError
           touchedRowIds.add(primaryRow.id)
         } else {
-          const { error: insertError } = await supabase
+          const insertPayload = {
+            patient_id: id,
+            ...payload,
+            created_by: actorId,
+          }
+          let { error: insertError } = await supabase
             .from('service_records')
-            .insert({
-              patient_id: id,
-              ...payload,
-              created_by: actorId,
-            })
+            .insert(insertPayload)
 
           if (insertError) throw insertError
         }
@@ -1444,13 +1537,14 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       }
 
       if (duplicateRowIdsToArchive.size > 0) {
-        const { error: archiveDuplicateError } = await supabase
+        const archiveDuplicatePayload = {
+          archived_at: archivedAt,
+          archived_by: actorId,
+          updated_by: actorId,
+        }
+        let { error: archiveDuplicateError } = await supabase
           .from('service_records')
-          .update({
-            archived_at: archivedAt,
-            archived_by: actorId,
-            updated_by: actorId,
-          })
+          .update(archiveDuplicatePayload)
           .in('id', [...duplicateRowIdsToArchive])
 
         if (archiveDuplicateError) throw archiveDuplicateError
@@ -1471,7 +1565,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const requestServiceSave = () => {
-    const hasDentalRecordForDate = dentalRecordHistory.some((entry) => `${entry.recordedAt ?? ''}`.slice(0, 10) === serviceForm.date)
+    const hasDentalRecordForDate = dentalRecordHistory.some((entry) => toLocalIsoDate(entry.recordedAt) === serviceForm.date)
 
     if (!hasDentalRecordForDate) {
       setServiceFormError('Update the dental history for this date before adding a service record.')
@@ -1523,7 +1617,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
         updated_by: actorId,
       }
 
-      const { error: insertError } = await supabase.from('dental_records').insert(payload)
+      let { error: insertError } = await supabase.from('dental_records').insert(payload)
       if (insertError) throw insertError
 
       await logPatientAction('dental_update', 'Updated dental record')
@@ -1710,7 +1804,11 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;')
 
-    const healthChecked = HEALTH.filter((item) => health[item]).join(', ') || '-'
+    const healthCheckedItems = HEALTH.filter((item) => item !== 'Others' && health[item])
+    if (health.Others) {
+      healthCheckedItems.push(healthOtherText.trim() ? `Others: ${healthOtherText.trim()}` : 'Others')
+    }
+    const healthChecked = healthCheckedItems.join(', ') || '-'
     const allergenChecked = ALLERGENS.filter((item) => allergens.values[item]).join(', ') || '-'
     const periodontalChecked = PERIODONTAL.filter((item) => dentalRecord.periodontal[item]).join(', ') || '-'
     const occlusionChecked = OCCLUSION.filter((item) => dentalRecord.occlusion[item]).join(', ') || '-'
@@ -1718,17 +1816,26 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       accumulator[legend.code] = legend.condition_name || legend.code
       return accumulator
     }, {})
-    const toothEntries = Object.entries(dentalRecord.toothMap)
-      .filter(([, value]) => value && value !== defaultLegendCode)
-      .map(([tooth, value]) => `${tooth}: ${conditionNameByCode[value] || value}`)
-      .join(', ') || '-'
     const toothRowsHtml = Object.entries(dentalRecord.toothMap)
       .filter(([, value]) => value && value !== defaultLegendCode)
       .map(([tooth, value]) => `<tr><td>${escapeHtml(tooth)}</td><td>${escapeHtml(conditionNameByCode[value] || value)}</td></tr>`)
       .join('')
-    const chartImagesHtml = DENTAL_CHART_IMAGES
-      .map((chart) => `<img src="${escapeHtml(chart.src)}" alt="${escapeHtml(chart.alt)}" />`)
-      .join('')
+    const chartImagesHtml = [
+      buildDentalChartExportSectionHtml({
+        chart: DENTAL_CHART_IMAGES[0],
+        toothNumbers: TOOTH_NUMBERS_BY_CHART.chart1,
+        positions: TOOTH_X_POSITIONS_BY_CHART.chart1,
+        toothMap: dentalRecord.toothMap,
+        keyPrefix: 'export-chart-1',
+      }),
+      buildDentalChartExportSectionHtml({
+        chart: DENTAL_CHART_IMAGES[1],
+        toothNumbers: TOOTH_NUMBERS_BY_CHART.chart2,
+        positions: TOOTH_X_POSITIONS_BY_CHART.chart2,
+        toothMap: dentalRecord.toothMap,
+        keyPrefix: 'export-chart-2',
+      }),
+    ].join('')
     const documentsRowsHtml = patientDocuments.length > 0
       ? patientDocuments.map((documentItem, index) => (
         `<tr><td>${index + 1}</td><td>${escapeHtml(documentItem.fileName)}</td></tr>`
@@ -1780,7 +1887,14 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     th, td { border: 1px solid #cfdbe3; padding: 8px; text-align: left; }
     th { background: #eef4f8; }
     .charts { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 10px; }
-    .charts img { width: 100%; border: 1px solid #d5e1e8; border-radius: 6px; }
+    .export-dental-chart { display: grid; grid-template-columns: 1fr; gap: 16px; border: 1px solid #d5e1e8; border-radius: 8px; padding: 14px 12px 16px; background: #ffffff; overflow: hidden; }
+    .export-dental-section { position: relative; min-width: 0; padding: 8px 0; }
+    .export-dental-section + .export-dental-section { border-top: 1px solid #d5e1e8; padding-top: 18px; }
+    .export-dental-section img { width: 100%; display: block; border: 1px solid #d5e1e8; border-radius: 6px; }
+    .export-drop-row { position: absolute; left: 0; right: 0; height: 42px; }
+    .export-drop-row-top { top: 12px; }
+    .export-drop-row-bottom { bottom: 12px; }
+    .export-drop-slot { position: absolute; transform: translateX(-50%); width: 42px; padding: 6px 3px; border: 1px solid #cfdbe3; border-radius: 4px; background: #ffffff; text-align: center; font-size: 11px; font-weight: 700; color: #d25661; line-height: 1; box-sizing: border-box; white-space: nowrap; overflow: hidden; }
     .section-block { page-break-inside: avoid; }
     .small-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 12px; }
     .small { font-size: 12px; color: #506571; margin-top: 10px; }
@@ -1815,14 +1929,13 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     <div class="field"><strong>Periodontal:</strong> ${escapeHtml(periodontalChecked)}</div>
     <div class="field"><strong>Occlusion:</strong> ${escapeHtml(occlusionChecked)}</div>
     <div class="field"><strong>Dentist:</strong> ${escapeHtml(dentalRecordMeta.updatedByName || '-')}</div>
-    <div class="field"><strong>Tooth Conditions:</strong> ${escapeHtml(toothEntries)}</div>
     <div class="field"><strong>Prescriptions:</strong> ${escapeHtml(dentalRecord.prescriptions || '-')}</div>
     <div class="field"><strong>Notes:</strong> ${escapeHtml(dentalRecord.notes || '-')}</div>
     <div class="field"><strong>Last Updated:</strong> ${escapeHtml(formatDateTimeLong(dentalRecordMeta.updatedAt))}</div>
     <div class="field"><strong>Updated By:</strong> ${escapeHtml(dentalRecordMeta.updatedByName || '-')}</div>
   </div>
   <h3>Dental Charts</h3>
-  <div class="charts">
+  <div class="charts export-dental-chart">
     ${chartImagesHtml}
   </div>
   <h3>Tooth Condition Map</h3>
@@ -2024,19 +2137,30 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                       <h3>Health Status</h3>
                       <button type="button" className="mini-edit-btn" onClick={() => openPatientModal('health')}>&#9998;</button>
                     </div>
-                    <div className="mini-check-grid three-col">
+                    <div className="mini-check-grid three-col health-status-grid">
                       {HEALTH.map((item) => <label key={item}><input type="checkbox" checked={health[item]} readOnly />{item}</label>)}
                     </div>
+                    {health.Others ? (
+                      <div className="health-status-other-field">
+                        <span>Others, please specify:</span>
+                        <input type="text" readOnly value={healthOtherText || ''} />
+                      </div>
+                    ) : null}
                   </article>
                   <article className="pr-card">
                     <div className="pr-card-head">
                       <h3>Allergen Information</h3>
                       <button type="button" className="mini-edit-btn" onClick={() => openPatientModal('allergen')}>&#9998;</button>
                     </div>
-                    <div className="mini-check-grid two-col">
+                    <div className="mini-check-grid two-col allergen-info-grid">
                       {ALLERGENS.map((item) => <label key={item}><input type="checkbox" checked={allergens.values[item]} readOnly />{item}</label>)}
-                      <label className="span-3">Others, please specify:<input type="text" readOnly value={allergens.others || ''} /></label>
                     </div>
+                    {allergens.others ? (
+                      <div className="health-status-other-field allergen-other-field">
+                        <span>Others, please specify:</span>
+                        <input type="text" readOnly value={allergens.others || ''} />
+                      </div>
+                    ) : null}
                   </article>
                 </div>
               </div>
@@ -2129,7 +2253,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
             <div className="pr-dentist-tag"><strong>Dentist:</strong> <span className="pr-dentist-name">{dentalRecordMeta.updatedByName}</span></div>
             <section className="pr-dental-history-wrap">
               <h3>Dental History</h3>
-              <div className="pr-dental-chart">{renderDentalSection(DENTAL_CHART_IMAGES[0], 1, 'chart-1', TOOTH_X_POSITIONS_BY_CHART.chart1, dentalRecord.toothMap, () => {}, true)}<div className="pr-dental-divider" />{renderDentalSection(DENTAL_CHART_IMAGES[1], 17, 'chart-2', TOOTH_X_POSITIONS_BY_CHART.chart2, dentalRecord.toothMap, () => {}, true)}</div>
+              <div className="pr-dental-chart">{renderDentalSection(DENTAL_CHART_IMAGES[0], TOOTH_NUMBERS_BY_CHART.chart1, 'chart-1', TOOTH_X_POSITIONS_BY_CHART.chart1, dentalRecord.toothMap, () => {}, true)}<div className="pr-dental-divider" />{renderDentalSection(DENTAL_CHART_IMAGES[1], TOOTH_NUMBERS_BY_CHART.chart2, 'chart-2', TOOTH_X_POSITIONS_BY_CHART.chart2, dentalRecord.toothMap, () => {}, true)}</div>
             </section>
             <div className="pr-notes-grid"><label>Dental Prescriptions<textarea readOnly value={dentalRecord.prescriptions} /></label><label>Dental Notes<textarea readOnly value={dentalRecord.notes} /></label></div>
             <div className="pr-meta-row"><span>Date of last changes: {formatDateTimeLong(dentalRecordMeta.updatedAt)}</span><span>Last changes by: {dentalRecordMeta.updatedByName}</span></div>
@@ -2236,7 +2360,11 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
         </div>
       ) : null}
 
-      {modal === 'health' ? <div className="pr-modal"><div className="pr-modal-head"><h2>Update Health Status</h2><button type="button" onClick={close}>X</button></div><div className="pr-modal-body"><div className="mini-check-grid three-col">{HEALTH.map((item) => <label key={item}><input type="checkbox" checked={health[item]} onChange={() => setHealth((previous) => ({ ...previous, [item]: !previous[item] }))} />{item}</label>)}</div><div className="modal-actions"><button type="button" className="danger-btn" onClick={close}>Cancel</button><button type="button" className="success-btn" onClick={() => { void saveHealth() }} disabled={isSaving}>Save</button></div></div></div> : null}
+      {modal === 'health' ? <div className="pr-modal"><div className="pr-modal-head"><h2>Update Health Status</h2><button type="button" onClick={close}>X</button></div><div className="pr-modal-body health-status-modal-body"><div className="mini-check-grid three-col health-status-grid">{HEALTH.map((item) => <label key={item}><input type="checkbox" checked={health[item]} onChange={() => setHealth((previous) => {
+        const nextValue = !previous[item]
+        if (item === 'Others' && !nextValue) setHealthOtherText('')
+        return { ...previous, [item]: nextValue }
+      })} />{item}</label>)}</div>{health.Others ? <div className="health-status-other-field"><label htmlFor="health-other-text">Others, please specify:</label><input id="health-other-text" type="text" value={healthOtherText} onChange={(event) => setHealthOtherText(toTitleCase(event.target.value))} /></div> : null}<div className="modal-actions"><button type="button" className="danger-btn" onClick={close}>Cancel</button><button type="button" className="success-btn" onClick={() => { void saveHealth() }} disabled={isSaving}>Save</button></div></div></div> : null}
 
       {modal === 'allergen' ? <div className="pr-modal"><div className="pr-modal-head"><h2>Update Allergen Information</h2><button type="button" onClick={close}>X</button></div><div className="pr-modal-body"><div className="mini-check-grid two-col">{ALLERGENS.map((item) => <label key={item}><input type="checkbox" checked={allergens.values[item]} onChange={() => setAllergens((previous) => ({ ...previous, values: { ...previous.values, [item]: !previous.values[item] } }))} />{item}</label>)}<label>Others, please specify:<input type="text" value={allergens.others} onChange={(event) => setAllergens((previous) => ({ ...previous, others: event.target.value }))} /></label></div><div className="modal-actions"><button type="button" className="danger-btn" onClick={close}>Cancel</button><button type="button" className="success-btn" onClick={() => { void saveAllergens() }} disabled={isSaving}>Save</button></div></div></div> : null}
 
@@ -2456,7 +2584,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
             </div>
 
             <div className="pr-modal-section-title">Dental Chart</div>
-            <div className="pr-dental-chart">{renderDentalSection(DENTAL_CHART_IMAGES[0], 1, 'modal-chart-1', TOOTH_X_POSITIONS_BY_CHART.chart1, dentalRecordForm.toothMap, (tooth, value) => setDentalRecordForm((previous) => ({ ...previous, toothMap: { ...previous.toothMap, [tooth]: value } })))}<div className="pr-dental-divider" />{renderDentalSection(DENTAL_CHART_IMAGES[1], 17, 'modal-chart-2', TOOTH_X_POSITIONS_BY_CHART.chart2, dentalRecordForm.toothMap, (tooth, value) => setDentalRecordForm((previous) => ({ ...previous, toothMap: { ...previous.toothMap, [tooth]: value } })))}</div>
+            <div className="pr-dental-chart">{renderDentalSection(DENTAL_CHART_IMAGES[0], TOOTH_NUMBERS_BY_CHART.chart1, 'modal-chart-1', TOOTH_X_POSITIONS_BY_CHART.chart1, dentalRecordForm.toothMap, (tooth, value) => setDentalRecordForm((previous) => ({ ...previous, toothMap: { ...previous.toothMap, [tooth]: value } })))}<div className="pr-dental-divider" />{renderDentalSection(DENTAL_CHART_IMAGES[1], TOOTH_NUMBERS_BY_CHART.chart2, 'modal-chart-2', TOOTH_X_POSITIONS_BY_CHART.chart2, dentalRecordForm.toothMap, (tooth, value) => setDentalRecordForm((previous) => ({ ...previous, toothMap: { ...previous.toothMap, [tooth]: value } })))}</div>
 
             <div className="pr-modal-section-title">Fill the Details</div>
             <div className="pr-dental-modal-notes"><label>Dental Prescriptions<textarea value={dentalRecordForm.prescriptions} onChange={(event) => setDentalRecordForm((previous) => ({ ...previous, prescriptions: event.target.value }))} /></label><label>Dental Notes<textarea value={dentalRecordForm.notes} onChange={(event) => setDentalRecordForm((previous) => ({ ...previous, notes: event.target.value }))} /></label></div>

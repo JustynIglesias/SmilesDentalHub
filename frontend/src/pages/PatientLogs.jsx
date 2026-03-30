@@ -18,6 +18,15 @@ const formatDateTime = (value) => {
   return `${dateLabel} ${timeLabel}`
 }
 
+const toLocalIsoDate = (value) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 const formatPatientCode = (patientCode, patientId) => {
   const raw = `${patientCode || ''}`.trim()
   if (/^PT-\d{6}$/.test(raw)) return raw
@@ -76,7 +85,7 @@ function PatientLogs() {
 
       const rowDate = new Date(row.logged_at)
       if (Number.isNaN(rowDate.getTime())) return false
-      const normalized = rowDate.toISOString().slice(0, 10)
+      const normalized = toLocalIsoDate(rowDate)
       return normalized === dateFilter
     })
 
