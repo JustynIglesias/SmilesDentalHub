@@ -20,7 +20,7 @@ const NAV_ICONS = {
   admin: adminIcon,
 }
 
-function SettingsGearIcon() {
+function ProfileIcon() {
   return (
     <svg
       className="nav-icon-svg"
@@ -28,21 +28,21 @@ function SettingsGearIcon() {
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
+      <circle
+        cx="12"
+        cy="8"
+        r="3.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
       <path
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.9"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M12 3.75l1.12 1.82a1 1 0 0 0 .88.48l2.1-.08.88 1.53-1.16 1.74a1 1 0 0 0 0 1.03l1.16 1.74-.88 1.53-2.1-.08a1 1 0 0 0-.88.48L12 20.25l-1.12-1.82a1 1 0 0 0-.88-.48l-2.1.08-.88-1.53 1.16-1.74a1 1 0 0 0 0-1.03L7.02 11.99l.88-1.53 2.1.08a1 1 0 0 0 .88-.48L12 3.75Z"
-      />
-      <circle
-        cx="12"
-        cy="12"
-        r="2.7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.9"
+        d="M5 19.25c1.44-3.08 4.05-4.75 7-4.75s5.56 1.67 7 4.75"
       />
     </svg>
   )
@@ -52,7 +52,7 @@ function renderNavIcon(itemId) {
   if (itemId === 'settings') {
     return (
       <span className="nav-icon" aria-hidden="true">
-        <SettingsGearIcon />
+        <ProfileIcon />
       </span>
     )
   }
@@ -62,9 +62,11 @@ function renderNavIcon(itemId) {
   )
 }
 
-function Sidebar({ onLogout, navItems }) {
+function Sidebar({ onLogout, navItems, isLogoutModalOpen = false }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const profileItem = (navItems ?? []).find((item) => item.id === 'settings')
+  const primaryNavItems = (navItems ?? []).filter((item) => item.id !== 'settings')
   const [showGuardPassword, setShowGuardPassword] = useState(false)
   const [guardState, setGuardState] = useState({
     isOpen: false,
@@ -178,7 +180,7 @@ function Sidebar({ onLogout, navItems }) {
           <img className="sidebar-logo" src={navbarLogo} alt="Smiles Dental Hub logo" />
         </div>
         <nav className="sidebar-nav">
-          {(navItems ?? []).map((item) => (
+          {primaryNavItems.map((item) => (
             <NavLink key={item.id} to={item.path} className="nav-item" onClick={(event) => handleNavClick(event, item.path)}>
               {renderNavIcon(item.id)}
               <span className="nav-item-label">{item.label}</span>
@@ -186,7 +188,23 @@ function Sidebar({ onLogout, navItems }) {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <button type="button" className="logout" onClick={onLogout}>
+          {profileItem ? (
+            <NavLink
+              to={profileItem.path}
+              className={({ isActive }) => `nav-item nav-item-profile${isActive ? ' active' : ''}`}
+              onClick={(event) => handleNavClick(event, profileItem.path)}
+            >
+              <span className="nav-item-profile-copy">
+                <span className="nav-item-profile-label-row">
+                  <span className="nav-icon" aria-hidden="true">
+                    <ProfileIcon />
+                  </span>
+                    <span className="nav-item-label">My Account</span>
+                  </span>
+              </span>
+            </NavLink>
+          ) : null}
+          <button type="button" className={`logout logout-featured${isLogoutModalOpen ? ' logout-active' : ''}`} onClick={onLogout}>
             <img className="nav-icon image" src={logoutIcon} alt="" aria-hidden="true" />
             <span className="nav-item-label">Logout</span>
           </button>

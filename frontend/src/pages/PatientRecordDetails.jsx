@@ -1083,9 +1083,12 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     <div className={`pr-drop-row ${rowType === 'top' ? 'pr-drop-row-top' : 'pr-drop-row-bottom'}`}>
       {toothNumbers.map((tooth, index) => ({ tooth, left: positions[index] })).map(({ tooth, left }) => (
         <div key={`${keyPrefix}-${tooth}`} className="pr-drop-slot" style={{ left: `${left}%` }}>
-          <select value={toothValues[`${rowType}-${tooth}`]} disabled={disabled} onChange={(event) => onToothChange(`${rowType}-${tooth}`, event.target.value)}>
-            {legendCodes.map((option) => <option key={option} value={option}>{option}</option>)}
-          </select>
+          <div className={`pr-drop-select-wrap ${disabled ? 'is-disabled' : ''}`}>
+            <select value={toothValues[`${rowType}-${tooth}`]} disabled={disabled} onChange={(event) => onToothChange(`${rowType}-${tooth}`, event.target.value)}>
+              {legendCodes.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+            <span className="pr-drop-value">{toothValues[`${rowType}-${tooth}`]}</span>
+          </div>
         </div>
       ))}
     </div>
@@ -2581,7 +2584,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       ) : null}
 
       {modal === 'dental-record' ? (
-        <div className="pr-modal">
+        <div className="pr-modal pr-dental-record-shell">
           <div className="pr-modal-head"><h2>Update Dental Records</h2><button type="button" onClick={close}>X</button></div>
           <div className="pr-modal-body pr-modal-scroll pr-dental-record-modal">
             <div className="pr-modal-section-title">Check the Following</div>

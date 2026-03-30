@@ -115,11 +115,14 @@ function LoginRoute({
   )
 }
 
-function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser, onProfileChange }) {
+function ProtectedLayout({ onLogout, navItems, role, profile, sessionUser, onProfileChange, isLogoutModalOpen }) {
+  const location = useLocation()
+  const isPatientRecordsRoute = location.pathname === '/records'
+
   return (
     <div className="dashboard">
-      <Sidebar onLogout={onLogout} navItems={navItems} />
-      <main className="dashboard-main">
+      <Sidebar onLogout={onLogout} navItems={navItems} isLogoutModalOpen={isLogoutModalOpen} />
+      <main className={`dashboard-main ${isPatientRecordsRoute ? 'dashboard-main-no-scroll' : ''}`}>
         <Routes>
           <Route path="/home" element={<Home currentProfile={profile} />} />
           <Route path="/records" element={<PatientRecords />} />
@@ -141,6 +144,7 @@ function AppRoutes() {
   const [profile, setProfile] = useState(null)
   const [navItems, setNavItems] = useState([])
   const [isBootstrapping, setIsBootstrapping] = useState(() => Boolean(supabase))
+  const [isLoginTransitioning, setIsLoginTransitioning] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState({ username: '', password: '' })
@@ -167,6 +171,7 @@ function AppRoutes() {
   const [staffOnboardingCode, setStaffOnboardingCode] = useState('')
   const [staffOnboardingError, setStaffOnboardingError] = useState('')
   const [staffOnboardingInfo, setStaffOnboardingInfo] = useState('')
+  const [staffOnboardingFieldErrors, setStaffOnboardingFieldErrors] = useState({})
   const [isStaffOnboardingSubmitting, setIsStaffOnboardingSubmitting] = useState(false)
   const [isStaffOnboardingVerifying, setIsStaffOnboardingVerifying] = useState(false)
   const profileUserIdRef = useRef(null)
@@ -209,7 +214,7 @@ function AppRoutes() {
     setProfile(profileData)
     setNavItems((navigationData ?? []).map((row) => ({
       id: row.item_key,
-      label: row.label,
+      label: row.item_key === 'settings' ? 'Profile' : row.label,
       path: row.path,
     })))
     setError('')
@@ -368,6 +373,7 @@ function AppRoutes() {
     setStaffOnboardingCode('')
     setStaffOnboardingError('')
     setStaffOnboardingInfo('')
+    setStaffOnboardingFieldErrors({})
   }, [profile?.user_id, profile?.email, profile?.birth_date, profile?.mobile_number, profile?.address])
 
   const handleStaffOnboardingFieldChange = (event) => {
@@ -376,6 +382,12 @@ function AppRoutes() {
       ...previous,
       [name]: name === 'mobileNumber' ? normalizePhilippineMobile(value) : value,
     }))
+    setStaffOnboardingFieldErrors((previous) => {
+      if (!previous[name]) return previous
+      const next = { ...previous }
+      delete next[name]
+      return next
+    })
     setStaffOnboardingError('')
     setStaffOnboardingInfo('')
   }
@@ -394,11 +406,21 @@ function AppRoutes() {
     const birthDate = staffOnboardingForm.birthDate
     const mobileNumber = normalizePhilippineMobile(staffOnboardingForm.mobileNumber)
     const address = staffOnboardingForm.address.trim()
+    const nextFieldErrors = {
+      email: !email,
+      birthDate: !birthDate,
+      mobileNumber: !mobileNumber,
+      address: !address,
+    }
 
     if (!email || !birthDate || !mobileNumber || !address) {
+      setStaffOnboardingFieldErrors(nextFieldErrors)
       setStaffOnboardingError('Please complete all required details.')
       return
     }
+
+    setStaffOnboardingFieldErrors({})
+
     if (calculateAgeFromDate(birthDate) < 18) {
       setStaffOnboardingError('You must be at least 18 years old.')
       return
@@ -747,11 +769,22 @@ function AppRoutes() {
     event.preventDefault()
     if (!supabase) return
 
-    const loginInput = form.username.trim()
-    if (!loginInput || !form.password) {
+    const submittedForm = new FormData(event.currentTarget)
+    const liveUsername = `${submittedForm.get('username') ?? ''}`
+    const livePassword = `${submittedForm.get('password') ?? ''}`
+    const loginInput = liveUsername.trim()
+
+    setForm({
+      username: liveUsername,
+      password: livePassword,
+    })
+
+    if (!loginInput || !livePassword) {
       setError('Please enter username/email and password.')
       return
     }
+
+    setError('')
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -761,7 +794,7 @@ function AppRoutes() {
         },
         body: JSON.stringify({
           login: loginInput,
-          password: form.password,
+          password: livePassword,
         }),
       })
 
@@ -793,8 +826,13 @@ function AppRoutes() {
     }
 
     setError('')
+    setIsLoginTransitioning(true)
     const restorePath = sessionStorage.getItem(LAST_PROTECTED_ROUTE_KEY)
     const nextPath = restorePath && restorePath !== '/login' ? restorePath : '/home'
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 650)
+    })
+    setIsLoginTransitioning(false)
     navigate(nextPath, { replace: true })
   }
 
@@ -844,8 +882,8 @@ function AppRoutes() {
     setStaffOnboardingInfo('')
   }
 
-  if (isBootstrapping) {
-    return <div className="app-loading">Loading...</div>
+  if (isBootstrapping || isLoginTransitioning) {
+    return <div className="app-loading">{isLoginTransitioning ? 'Signing in...' : 'Loading...'}</div>
   }
 
   if (!supabase) {
@@ -903,7 +941,7 @@ function AppRoutes() {
           }
         />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/*" element={<ProtectedLayout onLogout={handleLogoutRequest} navItems={navItems} role={profile?.role} profile={profile} sessionUser={session?.user} onProfileChange={setProfile} />} />
+        <Route path="/*" element={<ProtectedLayout onLogout={handleLogoutRequest} navItems={navItems} role={profile?.role} profile={profile} sessionUser={session?.user} onProfileChange={setProfile} isLogoutModalOpen={isLogoutModalOpen} />} />
       </Routes>
 
       {isLogoutModalOpen ? (
@@ -936,23 +974,23 @@ function AppRoutes() {
                 <form className="onboarding-form" onSubmit={(event) => { void handleStaffOnboardingSubmit(event) }}>
                   <p>Please complete your details first before accessing the system.</p>
                   <div className="onboarding-grid">
-                    <label>
-                      Email
+                    <label className={staffOnboardingFieldErrors.email ? 'field-required has-error' : 'field-required'}>
+                      <span className="field-label-copy">Email</span>
                       <input type="email" name="email" value={staffOnboardingForm.email} onChange={handleStaffOnboardingFieldChange} placeholder="Enter your real email" />
                     </label>
-                    <label>
-                      Birthday
+                    <label className={staffOnboardingFieldErrors.birthDate ? 'field-required has-error' : 'field-required'}>
+                      <span className="field-label-copy">Birthday</span>
                       <input type="date" name="birthDate" value={staffOnboardingForm.birthDate} onChange={handleStaffOnboardingFieldChange} max={getAdultBirthDateMax()} />
                     </label>
-                    <label>
-                      Mobile Number
+                    <label className={staffOnboardingFieldErrors.mobileNumber ? 'field-required has-error' : 'field-required'}>
+                      <span className="field-label-copy">Mobile Number</span>
                       <div className="onboarding-phone-field">
                         <span className="onboarding-phone-prefix">+63</span>
                         <input type="text" inputMode="numeric" name="mobileNumber" value={staffOnboardingForm.mobileNumber} onChange={handleStaffOnboardingFieldChange} placeholder="9762911478" />
                       </div>
                     </label>
-                    <label className="span-2">
-                      Address
+                    <label className={`span-2 field-required${staffOnboardingFieldErrors.address ? ' has-error' : ''}`}>
+                      <span className="field-label-copy">Address</span>
                       <input type="text" name="address" value={staffOnboardingForm.address} onChange={handleStaffOnboardingFieldChange} placeholder="Enter your address" />
                     </label>
                   </div>

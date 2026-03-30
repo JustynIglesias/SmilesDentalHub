@@ -549,7 +549,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
   return (
     <>
       <header className="page-header">
-        <h1>Settings</h1>
+        <h1>Profile</h1>
       </header>
 
       <section className="panel settings-page">
@@ -754,6 +754,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
                     </button>
                   </div>
                 </form>
+
               </div>
             </div>
           </div>

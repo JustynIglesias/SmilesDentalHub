@@ -292,6 +292,7 @@ function AddPatient() {
   const [authorizationAccepted, setAuthorizationAccepted] = useState(false)
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false)
   const [isSubmitSuccessOpen, setIsSubmitSuccessOpen] = useState(false)
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [validationMessage, setValidationMessage] = useState('')
   const [allergenInfo, setAllergenInfo] = useState(INITIAL_ALLERGEN_INFO)
@@ -821,12 +822,18 @@ function AddPatient() {
     setMedicalDetails(INITIAL_MEDICAL_DETAILS)
     setDentalDetails(INITIAL_DENTAL_DETAILS)
     setCheckedConditions(INITIAL_CHECKBOX_CONDITIONS)
+    setCheckedConditionsOtherText(INITIAL_CHECKBOX_CONDITIONS_OTHER_TEXT)
+    setBirthdateInput('')
     setInvalidPatientFields({})
     setInvalidMedicalAnswers({})
     setInvalidMedicalNotes({})
     setInvalidDentalAnswers({})
     setInvalidDentalNotes({})
     setInvalidAuthorization(false)
+    setValidationMessage('')
+    setIsSubmitConfirmOpen(false)
+    setIsSubmitSuccessOpen(false)
+    setIsClearConfirmOpen(false)
     sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
   }
   const handleSuccessAcknowledge = () => {
@@ -840,7 +847,7 @@ function AddPatient() {
         <h1>Add Patient Record</h1>
       </header>
 
-      <section className="panel tabs-panel add-patient-prototype">
+      <section className={`panel tabs-panel add-patient-prototype ${activeStep === 3 ? 'authorization-step-active' : ''}`}>
         <div className="panel-tabs add-patient-tabs">
           {STEPS.map((step, index) => (
             <button
@@ -857,7 +864,16 @@ function AddPatient() {
 
         {activeStep === 0 ? (
           <>
-            <h2 className="panel-title">Patient Information</h2>
+            <div className="add-patient-title-row">
+              <h2 className="panel-title">Patient Information</h2>
+              <button
+                type="button"
+                className="ghost add-patient-clear-btn"
+                onClick={() => setIsClearConfirmOpen(true)}
+              >
+                Clear All
+              </button>
+            </div>
 
             <div className="form-grid">
               <label>
@@ -1202,37 +1218,51 @@ function AddPatient() {
 
         {activeStep === 3 ? (
           <section className="authorization-wrap">
-            <h2>Authorization and Release</h2>
             <div className="authorization-card">
-              <p>
-                I certify that I have read and understood the questionnaire to the best of my
-                knowledge. I will seek help from the dental staff if questions are difficult to
-                read or understand. I agree to disclose all previous illnesses, medical and dental
-                history. I understand that providing incorrect information regarding medication,
-                allergies or illnesses can be dangerous to my health.
-              </p>
-              <p>
-                If I ever have changes in my health, I will inform the dentist/dental staff at the
-                next appointment. I authorize the dentist to release any information including the
-                diagnosis and records of any treatment or examination rendered to myself or my
-                child during the period of dental care to third party payers, HMOs or health
-                practitioners.
-              </p>
-              <label className={`agree-line ${invalidAuthorization ? 'input-error' : ''}`}>
-                <input
-                  type="radio"
-                  name="authorization"
-                  checked={authorizationAccepted}
-                  onClick={() => {
-                    if (authorizationAccepted) setAuthorizationAccepted(false)
-                  }}
-                  onChange={() => {
-                    setAuthorizationAccepted(true)
-                    setInvalidAuthorization(false)
-                  }}
-                />
-                I have read, understood, and <strong>agree</strong> to the terms stated above.
-              </label>
+              <div className="authorization-card-head">
+                <span className="authorization-kicker">Patient Consent</span>
+                <h2>Authorization and Release</h2>
+                <p>
+                  Please review this statement carefully before submitting the patient record.
+                </p>
+              </div>
+
+              <div className="authorization-card-body">
+                <div className="authorization-copy">
+                  <p>
+                    I certify that I have read and understood the questionnaire to the best of my
+                    knowledge. I will seek help from the dental staff if questions are difficult to
+                    read or understand. I agree to disclose all previous illnesses, medical and dental
+                    history. I understand that providing incorrect information regarding medication,
+                    allergies or illnesses can be dangerous to my health.
+                  </p>
+                  <p>
+                    If I ever have changes in my health, I will inform the dentist/dental staff at the
+                    next appointment. I authorize the dentist to release any information including the
+                    diagnosis and records of any treatment or examination rendered to myself or my
+                    child during the period of dental care to third party payers, HMOs or health
+                    practitioners.
+                  </p>
+                </div>
+
+                <label className={`agree-line ${invalidAuthorization ? 'input-error' : ''}`}>
+                  <input
+                    type="radio"
+                    name="authorization"
+                    checked={authorizationAccepted}
+                    onClick={() => {
+                      if (authorizationAccepted) setAuthorizationAccepted(false)
+                    }}
+                    onChange={() => {
+                      setAuthorizationAccepted(true)
+                      setInvalidAuthorization(false)
+                    }}
+                  />
+                  <span>
+                    I have read, understood, and <strong>agree</strong> to the terms stated above.
+                  </span>
+                </label>
+              </div>
             </div>
           </section>
         ) : null}
@@ -1258,13 +1288,13 @@ function AddPatient() {
       {isSubmitConfirmOpen ? (
         <>
           <div className="modal-backdrop" onClick={() => setIsSubmitConfirmOpen(false)} />
-          <div className="add-submit-modal">
-            <div className="add-submit-modal-head">
-              <h3>Confirm Submission</h3>
+          <div className="pr-modal add-patient-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="add-patient-confirm-title">
+            <div className="pr-modal-head">
+              <h2 id="add-patient-confirm-title">Confirm Submission</h2>
             </div>
-            <div className="add-submit-modal-body">
+            <div className="pr-modal-body add-patient-feedback-body">
               <p>Are you sure you want to submit this patient record?</p>
-              <div className="add-submit-actions">
+              <div className="modal-actions center">
                 <button type="button" className="danger-btn" onClick={() => setIsSubmitConfirmOpen(false)}>Cancel</button>
                 <button type="button" className="success-btn" onClick={() => { void confirmSubmission() }} disabled={isSubmitting}>
                   {isSubmitting ? 'Submitting...' : 'Submit'}
@@ -1275,16 +1305,34 @@ function AddPatient() {
         </>
       ) : null}
 
+      {isClearConfirmOpen ? (
+        <>
+          <div className="modal-backdrop" onClick={() => setIsClearConfirmOpen(false)} />
+          <div className="pr-modal add-patient-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="add-patient-clear-title">
+            <div className="pr-modal-head">
+              <h2 id="add-patient-clear-title">Clear All Details</h2>
+            </div>
+            <div className="pr-modal-body add-patient-feedback-body">
+              <p>Are you sure you want to clear all unsaved patient details?</p>
+              <div className="modal-actions center">
+                <button type="button" className="danger-btn" onClick={() => setIsClearConfirmOpen(false)}>Cancel</button>
+                <button type="button" className="success-btn" onClick={resetAddPatientForm}>Clear All</button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {isSubmitSuccessOpen ? (
         <>
           <div className="modal-backdrop" onClick={() => setIsSubmitSuccessOpen(false)} />
-          <div className="add-submit-modal">
-            <div className="add-submit-modal-head">
-              <h3>Success</h3>
+          <div className="pr-modal add-patient-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="add-patient-success-title">
+            <div className="pr-modal-head">
+              <h2 id="add-patient-success-title">Success</h2>
             </div>
-            <div className="add-submit-modal-body">
+            <div className="pr-modal-body add-patient-feedback-body">
               <p>Patient record submitted successfully.</p>
-              <div className="add-submit-actions center">
+              <div className="modal-actions center">
                 <button type="button" className="success-btn" onClick={handleSuccessAcknowledge}>OK</button>
               </div>
             </div>
@@ -1295,13 +1343,13 @@ function AddPatient() {
       {validationMessage ? (
         <>
           <div className="modal-backdrop" onClick={() => setValidationMessage('')} />
-          <div className="add-submit-modal">
-            <div className="add-submit-modal-head">
-              <h3>Notice</h3>
+          <div className="pr-modal add-patient-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="add-patient-notice-title">
+            <div className="pr-modal-head">
+              <h2 id="add-patient-notice-title">Notice</h2>
             </div>
-            <div className="add-submit-modal-body">
+            <div className="pr-modal-body add-patient-feedback-body">
               <p>{validationMessage}</p>
-              <div className="add-submit-actions center">
+              <div className="modal-actions center">
                 <button type="button" className="success-btn" onClick={() => setValidationMessage('')}>OK</button>
               </div>
             </div>
