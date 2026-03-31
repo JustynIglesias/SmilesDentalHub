@@ -298,7 +298,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'login and password are required.' });
     }
 
-    const resolvedEmail = await resolveLoginEmail(login);
+    const resolvedEmail = login.includes('@') ? login.toLowerCase() : await resolveLoginEmail(login);
     if (!resolvedEmail) {
       return res.status(401).json({ error: 'Invalid username/email or password.' });
     }

@@ -63,6 +63,7 @@ function LoginRoute({
   onLogin,
   form,
   error,
+  isLoggingIn,
   showPassword,
   onChange,
   onTogglePassword,
@@ -89,6 +90,7 @@ function LoginRoute({
     <Login
       form={form}
       error={error}
+      isLoggingIn={isLoggingIn}
       showPassword={showPassword}
       onChange={onChange}
       onSubmit={onLogin}
@@ -145,6 +147,7 @@ function AppRoutes() {
   const [navItems, setNavItems] = useState([])
   const [isBootstrapping, setIsBootstrapping] = useState(() => Boolean(supabase))
   const [isLoginTransitioning, setIsLoginTransitioning] = useState(false)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState({ username: '', password: '' })
@@ -232,6 +235,7 @@ function AppRoutes() {
       setProfile(null)
       setNavItems([])
       setForm({ username: '', password: '' })
+      setIsLoggingIn(false)
       setShowPassword(false)
       setForgotUsername('')
       setForgotCode('')
@@ -767,7 +771,7 @@ function AppRoutes() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    if (!supabase) return
+    if (!supabase || isLoggingIn) return
 
     const submittedForm = new FormData(event.currentTarget)
     const liveUsername = `${submittedForm.get('username') ?? ''}`
@@ -785,6 +789,7 @@ function AppRoutes() {
     }
 
     setError('')
+    setIsLoggingIn(true)
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -800,7 +805,7 @@ function AppRoutes() {
 
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setError(payload?.error || 'Incorrect username or password.')
+        setError(payload?.error || 'Unable to log in right now. Please try again.')
         return
       }
 
@@ -823,6 +828,8 @@ function AppRoutes() {
     } catch {
       setError('Unable to log in right now.')
       return
+    } finally {
+      setIsLoggingIn(false)
     }
 
     setError('')
@@ -916,6 +923,7 @@ function AppRoutes() {
               onLogin={handleSubmit}
               form={form}
               error={error}
+              isLoggingIn={isLoggingIn}
               showPassword={showPassword}
               onChange={handleChange}
               onTogglePassword={() => setShowPassword((prev) => !prev)}

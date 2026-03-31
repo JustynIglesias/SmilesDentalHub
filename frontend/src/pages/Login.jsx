@@ -4,6 +4,7 @@ import loginBackground from '../assets/login.png'
 function Login({
   form,
   error,
+  isLoggingIn,
   showPassword,
   onChange,
   onSubmit,
@@ -390,6 +391,7 @@ function Login({
                     value={form.username}
                     onChange={onChange}
                     autoComplete="username"
+                    disabled={isLoggingIn}
                   />
                 </label>
                 <label className={`field ${error ? 'has-error' : ''}`}>
@@ -402,12 +404,14 @@ function Login({
                       value={form.password}
                       onChange={onChange}
                       autoComplete="current-password"
+                      disabled={isLoggingIn}
                     />
                     <button
                       type="button"
                       className="eye-toggle"
                       onClick={onTogglePassword}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      disabled={isLoggingIn}
                     >
                       <svg
                         className="eye-icon"
@@ -448,7 +452,9 @@ function Login({
                 <button type="button" className="forgot-password-btn" onClick={() => setIsForgotOpen(true)}>
                   Forgot password?
                 </button>
-                <button type="submit" className="submit">Log In</button>
+                <button type="submit" className="submit" disabled={isLoggingIn}>
+                  {isLoggingIn ? 'Logging In...' : 'Log In'}
+                </button>
               </form>
             </div>
           </div>

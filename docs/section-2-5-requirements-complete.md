@@ -1,12 +1,40 @@
 ## 2.5 Operating Environment
 
-The following tables present the functional requirements (Table 2.5.1) and non-functional requirements (Table 2.5.2) of the proposed Smiles Dental Hub system. Functional requirements describe the system's operational features and the tasks each authorized user can perform, while non-functional requirements describe the quality attributes and operating conditions needed to ensure an efficient, secure, and reliable user experience.
+This section presents the complete operational requirements of the proposed Smiles Dental Hub system. It identifies the major functional features available to authorized users and the non-functional requirements that support secure, reliable, and efficient clinic operations. The section is intended to give a fuller description of how the system is used in practice by clinic staff, associate dentists, and administrators.
 
-### Table 2.5.1 Functional Requirements
+### 2.5.1 Overview of Operational Use
+
+Smiles Dental Hub is a web-based dental clinic information system designed to centralize patient registration, record management, treatment documentation, procedure maintenance, account administration, and audit monitoring. The system is used within the clinic environment through internet-connected desktop computers or laptops and is accessed only by authorized staff members. Depending on the assigned role, users are given access only to the modules and actions necessary for their responsibilities.
+
+The system supports the following major operational activities:
+
+- secure staff login and password recovery
+- role-based navigation and access control
+- patient registration through a guided multi-step form
+- patient record viewing and updating
+- dental record viewing and authorized editing
+- service record creation, viewing, and updating
+- patient activity log monitoring
+- management of services and dental chart legends
+- management of users, inactive records, and archived records
+- profile maintenance, email verification, and password updating
+
+### 2.5.2 Role-Based Operational Features
+
+| User Role | Major Operational Features |
+| --- | --- |
+| Receptionist | Can log in, recover account access, register patients, search and manage patient records, update patient information, upload supporting documents, add and update service records, view dental records, access procedures based on assigned permissions, view patient logs, and manage personal account settings. |
+| Associate Dentist | Can log in, recover account access, register patients, access patient records, update dental records, view and update service records, use procedures data for treatment documentation, view patient logs, and manage personal account settings. |
+| Admin | Can access all staff features and administrative functions such as user management, inactive-record handling, archive management, service archiving, dental chart legend archiving, and record retrieval workflows. |
+| Patient | Does not log in to the system directly but may use the clinic-provided device to complete the registration form during assisted patient intake. |
+
+### 2.5.3 Functional Requirements
+
+#### Table 2.5.1 Functional Requirements
 
 | Module / Feature | Description |
 | --- | --- |
-| **Login Page** |  |
+| **Login and Account Recovery** |  |
 | Login Form | Allows authorized staff users to log in using their username or email address and password. |
 | Login Button | Submits the entered credentials for authentication. |
 | System Authorization Alert | Displays an error message when the entered credentials are invalid or when the account is not authorized for access. |
@@ -15,9 +43,7 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Verify Reset Code | Allows the user to enter the verification code sent to email before setting a new password. |
 | Resend Reset Code | Allows the user to request another password reset code when the previous code is not received or has expired. |
 | Reset Password | Allows the user to create and confirm a new password after successful code verification. |
-
-
-| **Navigation Bar / Sidebar** |  |
+| **Navigation and Dashboard** |  |
 | Home Tab | Redirects the user to the Home page. |
 | Patient Records Tab | Redirects the user to the Patient Records page. |
 | Add Patient Record Tab | Redirects the user to the Add Patient page. |
@@ -28,9 +54,6 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Logout Button | Allows the user to end the current session and log out of the system. |
 | Logout Confirmation Buttons | The **Yes** button confirms logout, while the **No/Cancel** button closes the confirmation dialog without logging out. |
 | Role-Based Navigation Visibility | Displays only the modules and actions allowed for the logged-in user role, such as receptionist, associate dentist, or admin. |
-
-
-| **Home Page** |  |
 | Dashboard Summary Cards | Displays key summary information such as the number of patients served today and during the current week. |
 | Weekly and Monthly Patient Charts | Displays patient statistics using graphical charts based on recent service records. |
 | Hover Chart Tooltip | Displays the number of male patients, female patients, and total patients for a selected day or month when the user hovers over a bar. |
@@ -39,7 +62,7 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Assisted Patient Registration Workflow | Allows clinic staff to open the registration form on a clinic-owned device so the patient can complete the required information during registration. |
 | Multi-Step Registration Form | Guides the user through the sections **Patient Information**, **Medical History**, **Dental History**, and **Authorization and Release**. |
 | Patient Information Form | Collects patient details such as last name, first name, middle name, suffix, birthdate, age, sex, nickname, email address, civil status, current address, mobile number, occupation, and office address. Required and optional fields are validated accordingly. |
-| Additional Form for Minors | Displays additional fields for patients below 18 years old, including parent/guardian name, mobile number, occupation, and office address. |
+| Additional Form for Minors | Displays additional fields for patients below 18 years old, including parent or guardian name, mobile number, occupation, and office address. |
 | Medical History Form | Collects physician information, specialty, address, allergen information, health conditions, and responses to medical history questions. |
 | Dental History Form | Collects the name of the previous dentist, last dental examination date, reason for consultation, and responses to dental history questions. |
 | Authorization and Release Form | Allows the patient to read and agree to the authorization and release statement before submission. |
@@ -50,9 +73,7 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Duplicate Patient Validation | Checks existing patient records to prevent duplicate entries based on identifying patient information. |
 | Validation Alerts | Displays notices when required fields are incomplete, answers are missing, or invalid data is entered. |
 | Success Alert | Displays a success message after successful patient record submission. |
-
-
-| **Patient Records Page** |  |
+| **Patient Records Management** |  |
 | Patient Records List | Displays all active and inactive patient records that are not yet archived. |
 | Add New Patient Button | Opens the Add Patient Record page to create a new patient entry. |
 | Search Bar | Allows users to search patient records by patient name. |
@@ -61,8 +82,6 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | View Button | Opens the detailed patient record page. |
 | Sort By Control | Allows the user to sort patient records by available sorting options. |
 | Page Navigation | Allows the user to move between pages of patient records and control the number of rows displayed. |
-
-
 | **Patient Record Details - Patient Information Tab** |  |
 | Export Button | Allows the user to generate an export preview and print or save the patient record as a PDF file. |
 | Edit Button | Allows the user to update patient personal information, health status, allergen information, dental history, and medical history. |
@@ -72,8 +91,6 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Save Button | Saves edited patient information. |
 | Cancel Button | Closes the active editing form without saving changes. |
 | Close Button (X) | Closes the active modal or pop-up window. |
-
-
 | **Patient Record Details - Dental Records Tab** |  |
 | Dental Record Display | Shows the patient's dental chart, periodontal screening, occlusion, prescriptions, and notes. |
 | Update Dental Records Button | Opens the dental record update form. |
@@ -81,8 +98,6 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Dental Record Form | Allows the user to update periodontal screening, occlusion, dental chart entries, prescriptions, and dental notes. |
 | Save Dental Record Button | Saves the updated dental record. |
 | Role Restriction on Dental Editing | Receptionists can view dental records but cannot save modifications, while associate dentists and admins can update them. |
-
-
 | **Patient Record Details - Service Records Tab** |  |
 | Service Records List | Displays the patient's service history. |
 | Add Service Record Button | Opens the form for adding a new service record. |
@@ -97,9 +112,7 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Confirmation Dialog | Asks the user to confirm before saving a new or updated service record. |
 | Done Button | Closes the view service record modal. |
 | Service Record Role Access | Allows authorized staff roles to view, add, or update service records according to assigned permissions. |
-
-
-| **Patient Logs Page** |  |
+| **Patient Logs** |  |
 | Patient Logs Table | Displays patient log entries related to service updates and related activity. |
 | Search Bar | Allows the user to search patient logs by patient name. |
 | Filter Button | Opens the patient logs filter panel where the user can filter logs by date range. |
@@ -107,9 +120,7 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Sort Direction Button | Allows the user to sort the patient logs by date from newest to oldest or vice versa. |
 | Page Navigation | Allows the user to move between log pages and change the number of displayed rows. |
 | Activity Traceability | Maintains patient-related log entries to support monitoring of record and service activity. |
-
-
-| **Procedures Page - Services Tab** |  |
+| **Procedures Management** |  |
 | Services List | Displays all active dental services with their corresponding prices. |
 | Search Box | Allows the user to search services by name. |
 | Add Service Form | Allows the user to add a new service with its name and price. |
@@ -119,61 +130,45 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Duplicate Validation | Prevents duplicate service entries from being added or updated. |
 | Success and Error Alerts | Displays notices for successful, invalid, or duplicate operations. |
 | Service Management Role Access | Allows service viewing and maintenance actions according to user role, while archive and retrieval actions remain restricted to admin workflows. |
-
-
-| **Procedures Page - Dental Chart Legend Tab** |  |
 | Dental Chart Legends List | Displays active tooth conditions and their legend codes. |
-| Search Box | Allows the user to search legends by legend code or condition name. |
+| Legend Search Box | Allows the user to search legends by legend code or condition name. |
 | Add Condition Form | Allows the user to add a new dental chart legend and condition. |
 | Update Dental Chart Legend Button | Allows the user to update a legend code or tooth condition. |
 | Archive Dental Chart Legend Button | Allows the admin to archive a dental chart legend. |
-| Archive Confirmation Dialog | Asks the admin to confirm before archiving a dental chart legend. |
+| Legend Archive Confirmation Dialog | Asks the admin to confirm before archiving a dental chart legend. |
 | Legend Code Migration | Updates existing dental records when a legend code is changed, so chart references remain consistent. |
-| Duplicate Validation | Prevents duplicate legend codes or tooth condition names. |
+| Legend Duplicate Validation | Prevents duplicate legend codes or tooth condition names. |
 | Legend Management Role Access | Allows legend viewing and permitted updates based on assigned role, while archive and retrieval actions remain restricted to admin workflows. |
-
-
-| **Admin Page - Manage Users** |  |
+| **Administrative Functions** |  |
 | Users List | Displays all active registered users with their staff ID, name, username, role, and creation date. |
-| Search Bar | Allows the admin to search users by name, username, email address, or staff ID. |
-| Filter Button | Opens the manage users filter panel where the admin can filter records by role and account creation date range. |
-| Sort Controls | Allows the admin to sort users by name, staff ID, creation date, or role. |
+| User Search Bar | Allows the admin to search users by name, username, email address, or staff ID. |
+| User Filter Button | Opens the manage users filter panel where the admin can filter records by role and account creation date range. |
+| User Sort Controls | Allows the admin to sort users by name, staff ID, creation date, or role. |
 | Add User Button | Opens the form for creating a new staff account. |
 | View User Details | Allows the admin to open and review the full information of an existing staff account. |
 | Edit User Button | Allows the admin to view and update user information such as name, username, role, birthday, mobile number, and address. |
 | Archive User Button | Allows the admin to archive a user account instead of permanently deleting it from the active list. |
-| Validation Alerts | Notifies the admin of duplicate entries, missing required fields, and success messages. |
-| Page Navigation | Allows navigation across pages of user records. |
-
-
-| **Admin Page - Add User** |  |
-| Fill-Up Form | Allows the admin to enter first name, middle name, last name, suffix, username, password, role, and optional profile details. |
+| User Validation Alerts | Notifies the admin of duplicate entries, missing required fields, and success messages. |
+| User Page Navigation | Allows navigation across pages of user records. |
+| Add User Form | Allows the admin to enter first name, middle name, last name, suffix, username, password, role, and optional profile details. |
 | Add Button | Creates a new user account in the system. |
 | Generated System Email | Creates a system email format for newly added users before profile completion. |
-| Success / Error Alerts | Informs the admin whether the account creation succeeded or failed. |
-
-
-| **Admin Page - Inactive List** |  |
+| Add User Success or Error Alerts | Informs the admin whether the account creation succeeded or failed. |
 | Inactive Patients Table | Displays inactive patient records that are not yet archived. |
-| Search Bar | Allows the admin to search inactive patients by patient name or patient ID. |
-| Filter Button | Opens the inactive patients filter panel where the admin can filter records by sex, age range, and inactive date range. |
-| Sort Controls | Allows sorting by name, patient ID, or inactive date. |
+| Inactive Search Bar | Allows the admin to search inactive patients by patient name or patient ID. |
+| Inactive Filter Button | Opens the inactive patients filter panel where the admin can filter records by sex, age range, and inactive date range. |
+| Inactive Sort Controls | Allows sorting by name, patient ID, or inactive date. |
 | Archive Button | Allows the admin to archive an inactive patient record. |
-| Confirmation Alert | Asks the admin to confirm before archiving a record. |
-| Page Navigation | Allows movement across the inactive list pages. |
-
-
-| **Admin Page - Archive List** |  |
-| Archive Type Drop-Down | Allows the admin to switch between archived **patients**, **users**, **services**, and **dental conditions**. |
-| Search Bar | Allows the admin to search archived entries based on the selected archive type, such as patient name or patient ID, username or staff ID, service name, or legend code and condition name. |
-| Filter Button | Opens the archive filter panel where the admin can filter archived records based on the selected archive type and available criteria such as sex, role, age range, and archive date range. |
-| Sort Controls | Allows the admin to sort archived records based on available fields such as name, patient ID, staff ID, or archive date. |
+| Archive Confirmation Alert | Asks the admin to confirm before archiving a record. |
+| Inactive Page Navigation | Allows movement across the inactive list pages. |
+| Archive Type Drop-Down | Allows the admin to switch between archived patients, users, services, and dental conditions. |
+| Archive Search Bar | Allows the admin to search archived entries based on the selected archive type. |
+| Archive Filter Button | Opens the archive filter panel where the admin can filter archived records based on the selected archive type and available criteria. |
+| Archive Sort Controls | Allows the admin to sort archived records based on available fields such as name, patient ID, staff ID, or archive date. |
 | Retrieve Button | Allows the admin to restore archived patients, users, services, or dental chart legends back to active use when applicable. |
-| Confirmation Alert | Asks the admin to confirm retrieval actions. |
-| Page Navigation | Allows movement across pages in the archive list. |
-
-
-| **My Account Page** |  |
+| Retrieval Confirmation Alert | Asks the admin to confirm retrieval actions. |
+| Archive Page Navigation | Allows movement across pages in the archive list. |
+| **My Account** |  |
 | Profile Information View | Displays the current user's profile details. |
 | Edit Profile Button | Allows the user to switch the profile information section into editable mode. |
 | Profile Update Form | Allows the user to update editable personal details such as birthday, mobile number, and address. |
@@ -187,9 +182,11 @@ The following tables present the functional requirements (Table 2.5.1) and non-f
 | Success Modal | Displays confirmation after successful profile, email, or password updates. |
 | Validation and Feedback Messages | Displays appropriate messages for invalid input, expired verification code, successful verification, and successful updates. |
 
-The functional requirements table presents the specific capabilities of the Smiles Dental Hub information system. It identifies the major operational features and user interactions, from secure login and account recovery to patient registration, patient record management, dental and service record updating, patient log viewing, procedure management, user administration, archive handling, and profile maintenance. These functions define the complete digital workflow intended to improve clinic operations, reduce reliance on fragmented paper-based processes, and provide accurate role-based access to patient information.
+The functional requirements above present the specific operational capabilities of the Smiles Dental Hub information system. Together, these features describe the complete digital workflow of the clinic, from account access and patient intake to treatment documentation, service recording, administrative control, and long-term record maintenance.
 
-### Table 2.5.2 Non-Functional Requirements
+### 2.5.4 Non-Functional Requirements
+
+#### Table 2.5.2 Non-Functional Requirements
 
 | Non-Functional Requirement | Description |
 | --- | --- |
@@ -205,4 +202,4 @@ The functional requirements table presents the specific capabilities of the Smil
 | Recoverability | The system should support restoration workflows such as retrieving archived records and recovering staff account access through password reset and email verification. |
 | Auditability | The system should maintain log records for key patient-related actions to support traceability and accountability of system usage. |
 
-Table 2.5.2 defines the essential quality attributes of the Smiles Dental Hub system. These requirements focus on how the system should perform, rather than only what functions it provides. They establish standards for usability, performance, security, reliability, and data integrity to ensure that patient and clinic data remain accurate, protected, and consistently available. In addition, maintainability, scalability, recoverability, and auditability help ensure that the system can continue to support the clinic's future operational and technical needs.
+The non-functional requirements define the quality standards expected from the system. These requirements ensure that Smiles Dental Hub is not only functionally complete but also usable, secure, reliable, maintainable, and appropriate for continuous use in a clinical setting.
