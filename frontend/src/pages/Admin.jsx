@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
@@ -211,6 +211,7 @@ const formatStaffDisplayName = (profile) => {
 }
 
 function Admin() {
+  const importFileInputRef = useRef(null)
   const [tab, setTab] = useState('users')
   const [showAddUser, setShowAddUser] = useState(false)
   const [users, setUsers] = useState([])
@@ -253,6 +254,11 @@ function Admin() {
   const [isEditingUser, setIsEditingUser] = useState(false)
   const [invalidAddUserFields, setInvalidAddUserFields] = useState({})
   const [addUserValidationMessage, setAddUserValidationMessage] = useState('')
+  const [importFileName, setImportFileName] = useState('')
+  const [importCsvContent, setImportCsvContent] = useState('')
+  const [importSummary, setImportSummary] = useState(null)
+  const [importError, setImportError] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
   const [showUsersFilters, setShowUsersFilters] = useState(false)
   const [showInactiveFilters, setShowInactiveFilters] = useState(false)
   const [showArchiveFilters, setShowArchiveFilters] = useState(false)
@@ -290,11 +296,94 @@ function Admin() {
     setModal(null)
     setSelected(null)
     setIsEditingUser(false)
+    setImportError('')
+    setImportSummary(null)
+    setIsImporting(false)
+    if (importFileInputRef.current) {
+      importFileInputRef.current.value = ''
+    }
+  }
+
+  const openImportModal = () => {
+    setImportError('')
+    setImportSummary(null)
+    setImportCsvContent('')
+    setImportFileName('')
+    if (importFileInputRef.current) {
+      importFileInputRef.current.value = ''
+    }
+    setModal('import-patients')
   }
 
   const showSuccess = (message) => {
     setSuccessMessage(message)
     setModal('success')
+  }
+
+  const handleImportFileChange = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setImportCsvContent('')
+      setImportFileName('')
+      return
+    }
+
+    try {
+      const text = await file.text()
+      setImportCsvContent(text)
+      setImportFileName(file.name)
+      setImportError('')
+      setImportSummary(null)
+    } catch {
+      setImportError('Unable to read the selected CSV file.')
+      setImportCsvContent('')
+      setImportFileName('')
+    }
+  }
+
+  const importPatientMigration = async () => {
+    if (!importCsvContent.trim()) {
+      setImportError('Please choose a CSV file first.')
+      return
+    }
+
+    setIsImporting(true)
+    setImportError('')
+    setImportSummary(null)
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const accessToken = sessionData?.session?.access_token || ''
+      if (sessionError || !accessToken) {
+        setImportError('Unable to verify your session. Please log in again.')
+        return
+      }
+
+      const response = await fetch('/api/admin/import-patient-migration', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          fileName: importFileName,
+          csvContent: importCsvContent,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setImportError(payload?.error || 'Unable to import the migration CSV.')
+        return
+      }
+
+      setImportSummary(payload?.summary || null)
+      await loadAll()
+    } catch {
+      setImportError('Unable to import the migration CSV.')
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   const loadUsers = async () => {
@@ -1181,6 +1270,9 @@ function Admin() {
     <>
       <header className="page-header">
         <h1>Admin</h1>
+        <div className="page-header-actions">
+          <button type="button" className="primary" onClick={openImportModal}>Import Patients CSV</button>
+        </div>
       </header>
 
       <section className={`panel tabs-panel admin-panel v2 ${showAddUser ? '' : 'fixed-table-page'}`}>
@@ -1879,6 +1971,57 @@ function Admin() {
             <p>{addUserValidationMessage || 'Please fill out required fields.'}</p>
             <div className="modal-actions center">
               <button type="button" className="success-btn" onClick={closeModal}>OK</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {modal === 'import-patients' ? (
+        <div className="pr-modal procedures-modal admin-import-modal">
+          <div className="pr-modal-head">
+            <h2>Import Patient Migration CSV</h2>
+            <button type="button" onClick={closeModal}>X</button>
+          </div>
+          <div className="pr-modal-body">
+            <div className="admin-import-modal-body">
+              <p>Upload the migration CSV and the system will create or update patients and their dental records.</p>
+              <div className="admin-import-actions">
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => { void handleImportFileChange(event) }}
+                />
+                <button type="button" className="ghost" onClick={() => importFileInputRef.current?.click()}>Choose CSV File</button>
+                <span>{importFileName || 'No file selected yet.'}</span>
+              </div>
+              <p className="admin-import-helper">Use the migration format from the `docs` folder. For the chart, enter values like `16:X; 14:C` in Top Tooth Chart and `18:F; 24:ABR` in Bottom Tooth Chart. In the compact format, only medical history Q2, Q4, and Q5 support note-style entries; the other medical history cells should be `YES` or `NO` only. For dental history, only `dental_q2_under_treatment` supports that note-style entry; the other dental history cells should be `YES` or `NO` only. Duplicate a patient row when the patient has multiple dental records.</p>
+              {importError ? <p className="error">{importError}</p> : null}
+              {importSummary ? (
+                <div className="admin-import-summary">
+                  <p><strong>File:</strong> {importSummary.fileName || '-'}</p>
+                  <p><strong>Total rows:</strong> {importSummary.totalRows ?? 0}</p>
+                  <p><strong>Patients created:</strong> {importSummary.patientsCreated ?? 0}</p>
+                  <p><strong>Patients updated:</strong> {importSummary.patientsUpdated ?? 0}</p>
+                  <p><strong>Dental records created:</strong> {importSummary.dentalRecordsCreated ?? 0}</p>
+                  <p><strong>Dental records updated:</strong> {importSummary.dentalRecordsUpdated ?? 0}</p>
+                  <p><strong>Skipped rows:</strong> {importSummary.skippedRows ?? 0}</p>
+                  {Array.isArray(importSummary.errors) && importSummary.errors.length > 0 ? (
+                    <div className="admin-import-errors">
+                      <p><strong>Row issues:</strong></p>
+                      <ul>
+                        {importSummary.errors.slice(0, 8).map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="modal-actions admin-import-modal-actions">
+              <button type="button" className="danger-btn" onClick={closeModal}>Close</button>
+              <button type="button" className="success-btn" onClick={() => { void importPatientMigration() }} disabled={isImporting}>
+                {isImporting ? 'Importing...' : 'Process CSV Import'}
+              </button>
             </div>
           </div>
         </div>

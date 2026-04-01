@@ -801,6 +801,8 @@ body {
   min-height: 88px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   border-radius: 0;
   box-shadow: 0 10px 22px rgba(14, 97, 128, 0.14);
 }
@@ -810,6 +812,12 @@ body {
   font-size: var(--fs-page-title);
   line-height: 1.1;
   letter-spacing: 0.01em;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .records {
@@ -5300,6 +5308,8 @@ body {
   border: 1px solid rgba(170, 190, 203, 0.55);
   box-shadow: 0 30px 72px rgba(6, 21, 31, 0.35);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .pr-modal-head {
@@ -5339,6 +5349,8 @@ body {
   border-radius: 0;
   padding: 22px;
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .pr-modal-body p {
@@ -6965,6 +6977,85 @@ body {
 
 .admin-records-filter-actions {
   justify-content: flex-end;
+}
+
+.admin-import-modal {
+  width: min(720px, calc(100vw - 36px));
+  max-height: min(840px, calc(100vh - 24px));
+}
+
+.admin-import-modal .pr-modal-head {
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.admin-import-modal .pr-modal-body {
+  display: grid;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.admin-import-modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-import-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f2f8fb;
+  border: 1px solid rgba(24, 121, 156, 0.16);
+}
+
+.admin-import-actions input[type='file'] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.admin-import-actions span {
+  color: #275468;
+  font-weight: 600;
+}
+
+.admin-import-helper {
+  margin: 0;
+  color: #4c6a7a;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.admin-import-summary {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f7fbfd 0%, #eff8fb 100%);
+  border: 1px solid rgba(19, 109, 141, 0.14);
+}
+
+.admin-import-summary p {
+  margin: 0;
+}
+
+.admin-import-errors {
+  margin-top: 4px;
+}
+
+.admin-import-errors ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #8d2d2d;
+}
+
+.admin-import-modal-actions {
+  justify-content: space-between;
 }
 
 .admin-panel.v2 .records-footer,

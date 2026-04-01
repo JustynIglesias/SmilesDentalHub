@@ -1,0 +1,734 @@
+const express = require('express');
+const { createSupabaseClient } = require('../supabase');
+
+const router = express.Router();
+
+const HEALTH_CONDITIONS = [
+  'Low Blood Pressure',
+  'Severe Headaches',
+  'High Blood Pressure',
+  'Weight Loss',
+  'Heart Disease',
+  'Stroke',
+  'Asthma',
+  'Tuberculosis',
+  'Diabetes',
+  'Radiation Therapy',
+  'Respiratory Problems',
+  'Anemia/Blood Disease',
+  'Hay Fever/Allergies',
+  'Arthritis/Rheumatism',
+  'Epilepsy/Convulsions',
+  'Bleeding Problems',
+  'Fainting/Seizures',
+  'Heart Murmur',
+  'Rheumatic Fever',
+  'Kidney Disease',
+  'Stomach Trouble/Ulcers',
+  'Heart Surgery/Heart Attack',
+  'Angina pectoris, chest pain',
+  'Sexually Transmitted Disease',
+  'Joint Replacement/Implant',
+  'Hepatitis/Liver Disease',
+  'Thyroid Problems',
+  'Cancer/Tumors',
+  'Head Injuries',
+  'AIDS or HIV Infection',
+  'Others',
+];
+
+const ALLERGENS = [
+  'Local Anesthetic (ex. Lidocaine)',
+  'Penicillin/Antibiotics',
+  'Sulfa Drugs',
+  'Latex/Rubber',
+  'Aspirin',
+];
+
+const PERIODONTAL_FIELDS = [
+  ['dental_record_periodontal_gingivitis', 'Gingivitis'],
+  ['dental_record_periodontal_moderate_periodontitis', 'Moderate Periodontitis'],
+  ['dental_record_periodontal_early_periodontitis', 'Early Periodontitis'],
+  ['dental_record_periodontal_advanced_periodontitis', 'Advanced Periodontitis'],
+];
+
+const OCCLUSION_FIELDS = [
+  ['dental_record_occlusion_class_i_molar', 'Class I molar'],
+  ['dental_record_occlusion_overbite', 'Overbite'],
+  ['dental_record_occlusion_overjet', 'Overjet'],
+  ['dental_record_occlusion_midline_deviation', 'Midline Deviation'],
+];
+
+function normalizeString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function toTitleCase(value) {
+  const raw = normalizeString(value);
+  if (!raw) return '';
+  return raw
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (match) => match.toUpperCase());
+}
+
+function normalizeSex(value) {
+  const raw = normalizeString(value).toLowerCase();
+  if (raw === 'male' || raw === 'm') return 'Male';
+  if (raw === 'female' || raw === 'f') return 'Female';
+  if (raw === 'other') return 'Other';
+  return '';
+}
+
+function normalizeCivilStatus(value) {
+  const raw = normalizeString(value).toLowerCase();
+  if (raw === 'single') return 'Single';
+  if (raw === 'married') return 'Married';
+  if (raw === 'widowed') return 'Widowed';
+  if (raw === 'divorced') return 'Divorced';
+  if (raw === 'separated') return 'Separated';
+  return '';
+}
+
+function normalizeBoolean(value) {
+  const raw = normalizeString(value).toLowerCase();
+  if (!raw) return null;
+  if (['true', 'yes', 'y', '1'].includes(raw)) return true;
+  if (['false', 'no', 'n', '0'].includes(raw)) return false;
+  return null;
+}
+
+function normalizeYesNo(value) {
+  const raw = normalizeString(value).toUpperCase();
+  if (raw === 'YES' || raw === 'NO') return raw;
+  if (raw === 'TRUE') return 'YES';
+  if (raw === 'FALSE') return 'NO';
+  return '';
+}
+
+function resolveAnswerWithOptionalNote(answerValue, noteValue) {
+  const normalizedAnswer = normalizeYesNo(answerValue);
+  const normalizedNote = normalizeString(noteValue);
+
+  if (normalizedAnswer) {
+    return normalizedAnswer;
+  }
+
+  if (normalizedNote) {
+    return 'YES';
+  }
+
+  return '';
+}
+
+function resolveCompactAnswerAndNote(value) {
+  const raw = normalizeString(value);
+  if (!raw) {
+    return { answer: '', note: '' };
+  }
+
+  const normalizedAnswer = normalizeYesNo(raw);
+  if (normalizedAnswer) {
+    return { answer: normalizedAnswer, note: '' };
+  }
+
+  return {
+    answer: 'YES',
+    note: raw,
+  };
+}
+
+function resolveHistoryField(row, compactKey, answerKey, noteKey) {
+  const explicitNote = normalizeString(row[noteKey]);
+  const explicitAnswer = normalizeYesNo(row[answerKey]);
+
+  if (explicitAnswer || explicitNote) {
+    return {
+      answer: resolveAnswerWithOptionalNote(explicitAnswer, explicitNote),
+      note: explicitNote,
+    };
+  }
+
+  return resolveCompactAnswerAndNote(row[compactKey]);
+}
+
+function normalizePhone(value) {
+  const digits = `${value ?? ''}`.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('63') && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith('09') && digits.length === 11) return `+63${digits.slice(1)}`;
+  if (digits.startsWith('9') && digits.length === 10) return `+63${digits}`;
+  return normalizeString(value) || null;
+}
+
+function parseDateValue(value) {
+  const raw = normalizeString(value);
+  if (!raw) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, month, day, year] = slashMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function parseTimestampValue(value) {
+  const raw = normalizeString(value);
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function createBooleanMap(items, value = false) {
+  return Object.fromEntries(items.map((item) => [item, value]));
+}
+
+function createAnswerMap(size) {
+  return Object.fromEntries(Array.from({ length: size }, (_, index) => [`${index}`, '']));
+}
+
+function parseCsv(content) {
+  const rows = [];
+  const normalized = `${content ?? ''}`.replace(/^\uFEFF/, '');
+  let currentValue = '';
+  let currentRow = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    const next = normalized[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        currentValue += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && char === ',') {
+      currentRow.push(currentValue);
+      currentValue = '';
+      continue;
+    }
+
+    if (!inQuotes && (char === '\n' || char === '\r')) {
+      if (char === '\r' && next === '\n') index += 1;
+      currentRow.push(currentValue);
+      currentValue = '';
+      if (currentRow.some((cell) => normalizeString(cell))) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      continue;
+    }
+
+    currentValue += char;
+  }
+
+  currentRow.push(currentValue);
+  if (currentRow.some((cell) => normalizeString(cell))) {
+    rows.push(currentRow);
+  }
+
+  if (rows.length === 0) return [];
+
+  const [headers, ...dataRows] = rows;
+  return dataRows.map((row) => {
+    const record = {};
+    headers.forEach((header, index) => {
+      record[normalizeString(header)] = row[index] ?? '';
+    });
+    return record;
+  });
+}
+
+async function requireAdminRequester(accessToken) {
+  const requesterClient = createSupabaseClient({ accessToken });
+  const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+  if (requesterUserError || !requesterUserData?.user?.id) {
+    return {
+      errorResponse: {
+        status: 401,
+        payload: requesterUserError || { error: 'Unable to resolve authenticated user.' },
+      },
+    };
+  }
+
+  const serviceClient = createSupabaseClient({ useServiceRole: true });
+  const { data: requesterProfile, error: requesterProfileError } = await serviceClient
+    .from('staff_profiles')
+    .select('user_id, role, is_active')
+    .eq('user_id', requesterUserData.user.id)
+    .maybeSingle();
+
+  if (requesterProfileError) {
+    return {
+      errorResponse: {
+        status: 403,
+        payload: requesterProfileError,
+      },
+    };
+  }
+
+  if (!requesterProfile || !requesterProfile.is_active || requesterProfile.role !== 'admin') {
+    return {
+      errorResponse: {
+        status: 403,
+        payload: { error: 'Forbidden: admin role required.' },
+      },
+    };
+  }
+
+  return {
+    serviceClient,
+    requesterUserId: requesterUserData.user.id,
+  };
+}
+
+function buildAllergenInfo(rawAllergies) {
+  const tokens = normalizeString(rawAllergies)
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const values = createBooleanMap(ALLERGENS, false);
+  const others = [];
+
+  tokens.forEach((token) => {
+    const normalizedToken = token.toLowerCase();
+    if (normalizedToken.includes('local')) {
+      values['Local Anesthetic (ex. Lidocaine)'] = true;
+      return;
+    }
+    if (normalizedToken.includes('penicillin') || normalizedToken.includes('antibiotic')) {
+      values['Penicillin/Antibiotics'] = true;
+      return;
+    }
+    if (normalizedToken.includes('sulfa')) {
+      values['Sulfa Drugs'] = true;
+      return;
+    }
+    if (normalizedToken.includes('latex') || normalizedToken.includes('rubber')) {
+      values['Latex/Rubber'] = true;
+      return;
+    }
+    if (normalizedToken.includes('aspirin')) {
+      values.Aspirin = true;
+      return;
+    }
+    if (!['none', 'n/a', 'na'].includes(normalizedToken)) {
+      others.push(token);
+    }
+  });
+
+  return {
+    values,
+    others: others.join('; '),
+  };
+}
+
+function buildMedicalHistory(row) {
+  const fieldKeys = [
+    'good_health',
+    'under_treatment',
+    'serious_illness_or_surgery',
+    'hospitalized',
+    'medications',
+    'tobacco',
+    'alcohol_or_drugs',
+    'pregnant',
+    'breastfeeding',
+    'birth_control_pills',
+  ];
+  const answers = createAnswerMap(10);
+  const notes = {};
+  const noteEnabledIndexes = new Set([1, 3, 4]);
+
+  for (let index = 1; index <= 10; index += 1) {
+    const fieldKey = fieldKeys[index - 1];
+    const compactKey = `medical_q${index}_${fieldKey}`;
+    const answerKey = `medical_q${index}_${fieldKey}_answer`;
+    const noteKey = `medical_q${index}_${fieldKey}_note`;
+    const resolved = noteEnabledIndexes.has(index - 1)
+      ? resolveHistoryField(row, compactKey, answerKey, noteKey)
+      : {
+        answer: normalizeYesNo(row[answerKey] || row[compactKey]),
+        note: normalizeString(row[noteKey]),
+      };
+
+    answers[`${index - 1}`] = resolved.answer;
+
+    if (resolved.note) {
+      notes[`${index - 1}`] = resolved.note;
+    }
+  }
+
+  return {
+    physician: toTitleCase(row.medical_physician),
+    specialty: toTitleCase(row.medical_specialty),
+    address: toTitleCase(row.medical_address),
+    answers,
+    notes,
+  };
+}
+
+function buildDentalHistory(row) {
+  const fieldNames = [
+    'tooth_pain',
+    'under_treatment',
+    'hot_cold_sensitivity',
+    'sweet_sour_sensitivity',
+    'gum_bleeding',
+    'sores_or_lumps',
+    'orthodontic_work',
+    'local_anesthesia_exposure',
+    'anesthesia_reaction',
+    'post_extraction_problems',
+    'serious_dental_treatment_problems',
+    'head_neck_jaw_injury',
+    'oral_habits',
+    'difficulty_opening_closing_mouth',
+    'satisfied_with_teeth_appearance',
+    'bleaching_history',
+    'nervous_about_treatment',
+    'regular_recall',
+  ];
+
+  const answers = createAnswerMap(18);
+  const notes = {};
+
+  fieldNames.forEach((name, index) => {
+    const compactKey = `dental_q${index + 1}_${name}`;
+    const answerKey = `dental_q${index + 1}_${name}_answer`;
+    const noteKey = `dental_q${index + 1}_${name}_note`;
+    const resolved = index === 1
+      ? resolveHistoryField(row, compactKey, answerKey, noteKey)
+      : {
+        answer: normalizeYesNo(row[answerKey] || row[compactKey]),
+        note: normalizeString(row[noteKey]),
+      };
+
+    answers[`${index}`] = resolved.answer;
+    if (resolved.note) {
+      notes[`${index}`] = resolved.note;
+    }
+  });
+
+  return {
+    previous: toTitleCase(row.dental_previous_dentist),
+    lastExam: parseDateValue(row.dental_last_exam) || '',
+    reason: toTitleCase(row.dental_consultation_reason),
+    answers,
+    notes,
+  };
+}
+
+function buildPatientPayload(row, requesterUserId) {
+  return {
+    first_name: toTitleCase(row.first_name),
+    last_name: toTitleCase(row.last_name),
+    middle_name: toTitleCase(row.middle_name) || null,
+    suffix: toTitleCase(row.suffix) || null,
+    sex: normalizeSex(row.sex),
+    birth_date: parseDateValue(row.birth_date),
+    phone: normalizePhone(row.phone),
+    email: normalizeString(row.email).toLowerCase() || null,
+    address: toTitleCase(row.address) || null,
+    nickname: toTitleCase(row.nickname) || null,
+    civil_status: normalizeCivilStatus(row.civil_status) || null,
+    occupation: toTitleCase(row.occupation) || null,
+    office_address: toTitleCase(row.office_address) || null,
+    guardian_name: toTitleCase(row.guardian_name) || null,
+    guardian_mobile_number: normalizePhone(row.guardian_mobile_number),
+    guardian_occupation: toTitleCase(row.guardian_occupation) || null,
+    guardian_office_address: toTitleCase(row.guardian_office_address) || null,
+    emergency_contact_name: toTitleCase(row.emergency_contact_name) || null,
+    emergency_contact_phone: normalizePhone(row.emergency_contact_phone),
+    health_conditions: {
+      ...createBooleanMap(HEALTH_CONDITIONS, false),
+      othersText: '',
+    },
+    allergen_info: buildAllergenInfo(row.allergies),
+    medical_history: buildMedicalHistory(row),
+    dental_history: buildDentalHistory(row),
+    authorization_accepted: normalizeBoolean(row.authorization_accepted) ?? false,
+    is_active: normalizeBoolean(row.is_active) ?? true,
+    updated_by: requesterUserId,
+  };
+}
+
+function hasDentalRecordData(row) {
+  return [
+    'dental_record_recorded_at',
+    'dental_record_tooth_number',
+    'dental_record_findings',
+    'dental_record_treatment',
+    'dental_record_dentist',
+    'dental_record_prescriptions',
+    'dental_record_notes',
+    'dental_record_top_tooth_chart',
+    'dental_record_bottom_tooth_chart',
+    'dental_record_tooth_map_json',
+  ].some((field) => normalizeString(row[field]));
+}
+
+function buildChartBooleanGroup(row, fieldMap) {
+  return Object.fromEntries(fieldMap.map(([fieldName, label]) => [label, normalizeBoolean(row[fieldName]) ?? false]));
+}
+
+function parseJsonObject(rawValue, fallback = {}) {
+  const raw = normalizeString(rawValue);
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
+function parseToothChartEntries(rawValue, rowPrefix) {
+  const raw = normalizeString(rawValue);
+  if (!raw) return {};
+
+  return raw
+    .split(/[;\n|]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .reduce((accumulator, entry) => {
+      const [rawToothNumber, rawCode] = entry.split(':').map((item) => item?.trim?.() || '');
+      const toothNumber = Number.parseInt(rawToothNumber, 10);
+      const code = normalizeString(rawCode);
+
+      if (!Number.isInteger(toothNumber) || toothNumber < 1 || toothNumber > 32 || !code) {
+        return accumulator;
+      }
+
+      accumulator[`${rowPrefix}-${toothNumber}`] = code;
+      return accumulator;
+    }, {});
+}
+
+function buildToothMap(row) {
+  const topChart = parseToothChartEntries(row.dental_record_top_tooth_chart, 'top');
+  const bottomChart = parseToothChartEntries(row.dental_record_bottom_tooth_chart, 'bottom');
+  const explicitChart = { ...topChart, ...bottomChart };
+
+  if (Object.keys(explicitChart).length > 0) {
+    return explicitChart;
+  }
+
+  return parseJsonObject(row.dental_record_tooth_map_json, {});
+}
+
+function buildDentalRecordPayload(row, patientId, requesterUserId) {
+  const notes = normalizeString(row.dental_record_notes);
+  const dentist = normalizeString(row.dental_record_dentist);
+
+  return {
+    patient_id: patientId,
+    tooth_number: normalizeString(row.dental_record_tooth_number) || 'ALL',
+    findings: normalizeString(row.dental_record_findings) || null,
+    treatment: normalizeString(row.dental_record_treatment) || null,
+    recorded_at: parseTimestampValue(row.dental_record_recorded_at) || new Date().toISOString(),
+    chart_data: {
+      toothMap: buildToothMap(row),
+      periodontal: buildChartBooleanGroup(row, PERIODONTAL_FIELDS),
+      occlusion: buildChartBooleanGroup(row, OCCLUSION_FIELDS),
+      prescriptions: normalizeString(row.dental_record_prescriptions),
+      notes,
+      dentist: dentist || '',
+    },
+    created_by: requesterUserId,
+    updated_by: requesterUserId,
+  };
+}
+
+async function resolvePatient(serviceClient, patientCache, patientPayload, requesterUserId) {
+  const cacheKey = [
+    patientPayload.last_name.toLowerCase(),
+    patientPayload.first_name.toLowerCase(),
+    patientPayload.birth_date || '',
+    patientPayload.sex,
+  ].join('|');
+
+  if (patientCache.has(cacheKey)) {
+    return {
+      ...patientCache.get(cacheKey),
+      mode: 'cached',
+    };
+  }
+
+  let patientQuery = serviceClient
+    .from('patients')
+    .select('id, patient_code')
+    .ilike('last_name', patientPayload.last_name)
+    .ilike('first_name', patientPayload.first_name)
+    .eq('sex', patientPayload.sex)
+    .limit(1);
+
+  patientQuery = patientPayload.birth_date
+    ? patientQuery.eq('birth_date', patientPayload.birth_date)
+    : patientQuery.is('birth_date', null);
+
+  const { data: existingPatients, error: fetchError } = await patientQuery;
+
+  if (fetchError) throw fetchError;
+
+  if (existingPatients?.[0]?.id) {
+    const existingPatient = existingPatients[0];
+    const { error: updateError } = await serviceClient
+      .from('patients')
+      .update({
+        ...patientPayload,
+        updated_by: requesterUserId,
+      })
+      .eq('id', existingPatient.id);
+
+    if (updateError) throw updateError;
+
+    const resolved = { id: existingPatient.id, patient_code: existingPatient.patient_code, mode: 'updated' };
+    patientCache.set(cacheKey, resolved);
+    return resolved;
+  }
+
+  const { data: insertedPatient, error: insertError } = await serviceClient
+    .from('patients')
+    .insert({
+      ...patientPayload,
+      created_by: requesterUserId,
+      updated_by: requesterUserId,
+    })
+    .select('id, patient_code')
+    .single();
+
+  if (insertError) throw insertError;
+
+  const resolved = { id: insertedPatient.id, patient_code: insertedPatient.patient_code, mode: 'created' };
+  patientCache.set(cacheKey, resolved);
+  return resolved;
+}
+
+async function upsertDentalRecord(serviceClient, dentalPayload, requesterUserId) {
+  const { data: existingRows, error: fetchError } = await serviceClient
+    .from('dental_records')
+    .select('id')
+    .eq('patient_id', dentalPayload.patient_id)
+    .eq('tooth_number', dentalPayload.tooth_number)
+    .eq('recorded_at', dentalPayload.recorded_at)
+    .limit(1);
+
+  if (fetchError) throw fetchError;
+
+  if (existingRows?.[0]?.id) {
+    const { error: updateError } = await serviceClient
+      .from('dental_records')
+      .update({
+        findings: dentalPayload.findings,
+        treatment: dentalPayload.treatment,
+        chart_data: dentalPayload.chart_data,
+        updated_by: requesterUserId,
+      })
+      .eq('id', existingRows[0].id);
+
+    if (updateError) throw updateError;
+    return 'updated';
+  }
+
+  const { error: insertError } = await serviceClient
+    .from('dental_records')
+    .insert(dentalPayload);
+
+  if (insertError) throw insertError;
+  return 'created';
+}
+
+router.post('/import-patient-migration', async (req, res) => {
+  const accessToken = `${req.headers.authorization || ''}`.replace(/^Bearer\s+/i, '').trim();
+  const adminContext = await requireAdminRequester(accessToken);
+
+  if (adminContext.errorResponse) {
+    return res.status(adminContext.errorResponse.status).json(adminContext.errorResponse.payload);
+  }
+
+  const { serviceClient, requesterUserId } = adminContext;
+  const csvContent = typeof req.body?.csvContent === 'string' ? req.body.csvContent : '';
+  const fileName = normalizeString(req.body?.fileName) || 'patients-record-migrate-template.csv';
+
+  if (!csvContent.trim()) {
+    return res.status(400).json({ error: 'CSV content is required.' });
+  }
+
+  const rows = parseCsv(csvContent);
+  if (rows.length === 0) {
+    return res.status(400).json({ error: 'CSV file has no data rows.' });
+  }
+
+  const patientCache = new Map();
+  const summary = {
+    fileName,
+    totalRows: rows.length,
+    patientsCreated: 0,
+    patientsUpdated: 0,
+    dentalRecordsCreated: 0,
+    dentalRecordsUpdated: 0,
+    skippedRows: 0,
+    errors: [],
+  };
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const rowNumber = index + 2;
+
+    try {
+      const patientPayload = buildPatientPayload(row, requesterUserId);
+      if (!patientPayload.first_name || !patientPayload.last_name || !patientPayload.sex) {
+        summary.skippedRows += 1;
+        summary.errors.push(`Row ${rowNumber}: first_name, last_name, and sex are required.`);
+        continue;
+      }
+
+      const resolvedPatient = await resolvePatient(serviceClient, patientCache, patientPayload, requesterUserId);
+      if (resolvedPatient.mode === 'created') {
+        summary.patientsCreated += 1;
+      } else if (resolvedPatient.mode === 'updated') {
+        summary.patientsUpdated += 1;
+      }
+
+      if (!hasDentalRecordData(row)) {
+        continue;
+      }
+
+      const dentalPayload = buildDentalRecordPayload(row, resolvedPatient.id, requesterUserId);
+      const dentalMode = await upsertDentalRecord(serviceClient, dentalPayload, requesterUserId);
+      if (dentalMode === 'created') {
+        summary.dentalRecordsCreated += 1;
+      } else {
+        summary.dentalRecordsUpdated += 1;
+      }
+    } catch (error) {
+      summary.skippedRows += 1;
+      summary.errors.push(`Row ${rowNumber}: ${error.message || 'Import failed.'}`);
+    }
+  }
+
+  return res.json({
+    ok: true,
+    message: 'Patient migration import completed.',
+    summary,
+  });
+});
+
+module.exports = router;

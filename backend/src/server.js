@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const config = require('./config');
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 const dbRoutes = require('./routes/db');
 const rpcRoutes = require('./routes/rpc');
 
@@ -63,6 +64,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/db', dbRoutes);
 app.use('/api/rpc', rpcRoutes);
 
