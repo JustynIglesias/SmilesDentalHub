@@ -17,6 +17,69 @@ import { isAccessTokenExpired, missingSupabaseEnv, supabase } from './lib/supaba
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
 const LAST_PROTECTED_ROUTE_KEY = 'dent22.lastProtectedRoute'
 const PLACEHOLDER_EMAIL_DOMAINS = ['@smilesdentalhub.local', '@dent22.local']
+const BACKEND_STARTING_ERROR = 'BACKEND_STARTING_ERROR'
+
+const sleep = (ms) => new Promise((resolve) => {
+  window.setTimeout(resolve, ms)
+})
+
+const waitForBackendReady = async ({ attempts = 6, delayMs = 500 } = {}) => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(`/api/health?ts=${Date.now()}`, {
+        cache: 'no-store',
+      })
+      if (response.ok) return true
+    } catch {
+      // Ignore transient startup errors and keep polling until the backend responds.
+    }
+
+    if (attempt < attempts - 1) {
+      await sleep(delayMs)
+    }
+  }
+
+  return false
+}
+
+const fetchJsonWithBackendRetry = async (
+  input,
+  init,
+  {
+    readinessAttempts = 6,
+    readinessDelayMs = 500,
+    retryCount = 1,
+    retryDelayMs = 350,
+  } = {},
+) => {
+  const isBackendReady = await waitForBackendReady({
+    attempts: readinessAttempts,
+    delayMs: readinessDelayMs,
+  })
+
+  if (!isBackendReady) {
+    const error = new Error('Backend is still starting.')
+    error.code = BACKEND_STARTING_ERROR
+    throw error
+  }
+
+  let lastError = null
+
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    try {
+      const response = await fetch(input, init)
+      const payload = await response.json().catch(() => ({}))
+      return { response, payload }
+    } catch (error) {
+      lastError = error
+      if (attempt < retryCount) {
+        await sleep(retryDelayMs)
+      }
+    }
+  }
+
+  throw lastError
+}
 
 const isPlaceholderStaffEmail = (email = '') => {
   const normalized = `${email || ''}`.trim().toLowerCase()
@@ -447,7 +510,7 @@ function AppRoutes() {
         return
       }
 
-      const response = await fetch('/api/auth/start-staff-onboarding', {
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/start-staff-onboarding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -460,8 +523,6 @@ function AppRoutes() {
           address,
         }),
       })
-
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         setStaffOnboardingError(payload?.error || 'Unable to start profile verification.')
         setIsStaffOnboardingSubmitting(false)
@@ -472,8 +533,12 @@ function AppRoutes() {
       setStaffOnboardingCode('')
       setStaffOnboardingInfo(`Verification code sent to ${payload?.email || email}.`)
       setIsStaffOnboardingSubmitting(false)
-    } catch {
-      setStaffOnboardingError('Unable to start profile verification.')
+    } catch (requestError) {
+      setStaffOnboardingError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to start profile verification.',
+      )
       setIsStaffOnboardingSubmitting(false)
     }
   }
@@ -503,7 +568,7 @@ function AppRoutes() {
         return
       }
 
-      const response = await fetch('/api/auth/verify-staff-onboarding', {
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/verify-staff-onboarding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -514,8 +579,6 @@ function AppRoutes() {
           code,
         }),
       })
-
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         setStaffOnboardingError(payload?.error || 'Unable to verify onboarding code.')
         setIsStaffOnboardingVerifying(false)
@@ -527,8 +590,12 @@ function AppRoutes() {
       setStaffOnboardingCode('')
       setStaffOnboardingInfo('')
       setIsStaffOnboardingVerifying(false)
-    } catch {
-      setStaffOnboardingError('Unable to verify onboarding code.')
+    } catch (requestError) {
+      setStaffOnboardingError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to verify onboarding code.',
+      )
       setIsStaffOnboardingVerifying(false)
     }
   }
@@ -594,7 +661,7 @@ function AppRoutes() {
 
     try {
       const redirectTo = `${window.location.origin}/reset-password`
-      const response = await fetch('/api/auth/forgot-password', {
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/forgot-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -604,8 +671,6 @@ function AppRoutes() {
           redirectTo,
         }),
       })
-
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         setForgotError(payload?.error || 'Unable to send reset email. Please try again.')
         setIsSendingReset(false)
@@ -617,8 +682,12 @@ function AppRoutes() {
       setForgotStep('verify')
       setForgotSuccess(`Verification code sent to ${payload?.email || username}. Check your email inbox for the latest code.`)
       setIsSendingReset(false)
-    } catch {
-      setForgotError('Unable to send verification code. Please try again.')
+    } catch (requestError) {
+      setForgotError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to send verification code. Please try again.',
+      )
       setIsSendingReset(false)
     }
   }
@@ -639,7 +708,7 @@ function AppRoutes() {
     setForgotSuccess('')
 
     try {
-      const response = await fetch('/api/auth/verify-reset-code', {
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/verify-reset-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -649,8 +718,6 @@ function AppRoutes() {
           code,
         }),
       })
-
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         const rawError = String(payload?.error || '').toLowerCase()
         const nextError = rawError.includes('expired') || rawError.includes('invalid')
@@ -674,8 +741,12 @@ function AppRoutes() {
       setForgotStep('reset')
       setForgotSuccess('Code verified. You can now set a new password.')
       setIsVerifyingCode(false)
-    } catch {
-      setForgotError('Unable to verify code. Please try again.')
+    } catch (requestError) {
+      setForgotError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to verify code. Please try again.',
+      )
       setIsVerifyingCode(false)
     }
   }
@@ -713,7 +784,7 @@ function AppRoutes() {
 
     try {
       const updatePasswordWithToken = async (accessToken) => {
-        const response = await fetch('/api/auth/update-password', {
+        const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/update-password', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -723,7 +794,6 @@ function AppRoutes() {
             newPassword,
           }),
         })
-        const payload = await response.json().catch(() => ({}))
         return { response, payload }
       }
 
@@ -731,7 +801,7 @@ function AppRoutes() {
       let { response, payload } = await updatePasswordWithToken(activeAccessToken)
 
       if (!response.ok && String(payload?.error || '').toLowerCase().includes('auth session missing')) {
-        const refreshResponse = await fetch('/api/auth/refresh-session', {
+        const { response: refreshResponse, payload: refreshPayload } = await fetchJsonWithBackendRetry('/api/auth/refresh-session', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -740,7 +810,6 @@ function AppRoutes() {
             refreshToken: forgotRefreshToken,
           }),
         })
-        const refreshPayload = await refreshResponse.json().catch(() => ({}))
         if (refreshResponse.ok && refreshPayload?.session?.access_token && refreshPayload?.session?.refresh_token) {
           activeAccessToken = refreshPayload.session.access_token
           setForgotAccessToken(refreshPayload.session.access_token)
@@ -763,8 +832,12 @@ function AppRoutes() {
       setForgotRefreshToken('')
       setForgotSuccess('Password updated successfully. You can now log in.')
       setIsResettingPassword(false)
-    } catch {
-      setForgotError('Unable to update password.')
+    } catch (requestError) {
+      setForgotError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to update password.',
+      )
       setIsResettingPassword(false)
     }
   }
@@ -792,7 +865,7 @@ function AppRoutes() {
     setIsLoggingIn(true)
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -802,8 +875,6 @@ function AppRoutes() {
           password: livePassword,
         }),
       })
-
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         setError(payload?.error || 'Unable to log in right now. Please try again.')
         return
@@ -825,8 +896,12 @@ function AppRoutes() {
         setError(sessionError.message || 'Unable to finish login.')
         return
       }
-    } catch {
-      setError('Unable to log in right now.')
+    } catch (requestError) {
+      setError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to log in right now.',
+      )
       return
     } finally {
       setIsLoggingIn(false)
