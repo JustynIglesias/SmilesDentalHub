@@ -155,6 +155,8 @@ const getMaxBirthdateIso = () => {
   return maxBirthdate.toISOString().slice(0, 10)
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
 const formatBirthdateDisplay = (isoDate) => {
   const raw = `${isoDate || ''}`.trim()
   if (!raw) return ''
@@ -163,6 +165,18 @@ const formatBirthdateDisplay = (isoDate) => {
   const [year, month, day] = parts
   if (!year || !month || !day) return ''
   return `${day}/${month}/${year}`
+}
+
+const formatBirthdateLongDisplay = (isoDate) => {
+  const raw = `${isoDate || ''}`.trim()
+  if (!raw) return ''
+  const parts = raw.split('-')
+  if (parts.length !== 3) return ''
+  const [year, month, day] = parts
+  const monthIndex = Number(month) - 1
+  const dayNumber = Number(day)
+  if (!year || !Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11 || !Number.isInteger(dayNumber)) return ''
+  return `${MONTH_NAMES[monthIndex]} ${dayNumber}, ${year}`
 }
 
 const parseBirthdateDisplay = (displayDate) => {
@@ -397,7 +411,7 @@ function AddPatient() {
   }, [patientInfo.birthdate])
 
   useEffect(() => {
-    setBirthdateInput(formatBirthdateDisplay(patientInfo.birthdate))
+    setBirthdateInput(formatBirthdateLongDisplay(patientInfo.birthdate))
   }, [patientInfo.birthdate])
 
   useEffect(() => {
@@ -626,12 +640,13 @@ function AddPatient() {
     const typedValue = `${birthdateInput || ''}`.trim()
     if (!typedValue) {
       setPatientField('birthdate', '')
+      setBirthdateInput('')
       return
     }
 
     const parsedIso = parseBirthdateDisplay(typedValue)
     if (!parsedIso) {
-      setValidationMessage('Birthdate must follow dd/mm/yyyy format.')
+      setValidationMessage('Birthdate must follow DD/MM/YYYY format.')
       setPatientField('birthdate', '')
       setInvalidPatientFields((previous) => ({ ...previous, birthdate: true }))
       return
@@ -645,6 +660,7 @@ function AddPatient() {
     }
 
     setPatientField('birthdate', parsedIso)
+    setBirthdateInput(formatBirthdateLongDisplay(parsedIso))
   }
 
   const normalizeSex = (value) => {
@@ -899,13 +915,18 @@ function AddPatient() {
                     className={invalidPatientFields.birthdate ? 'input-error' : ''}
                     type="text"
                     required
-                    placeholder="dd/mm/yyyy"
+                    placeholder="DD/MM/YYYY"
                     maxLength={10}
                     style={{ color: birthdateInput ? '#111827' : '#9aa6af' }}
                     value={birthdateInput}
                     onChange={(e) => {
                       clearPatientFieldError('birthdate')
                       setBirthdateInput(normalizeBirthdateTyping(e.target.value))
+                    }}
+                    onFocus={() => {
+                      if (patientInfo.birthdate) {
+                        setBirthdateInput(formatBirthdateDisplay(patientInfo.birthdate))
+                      }
                     }}
                     onBlur={commitBirthdateFromInput}
                   />
@@ -921,7 +942,7 @@ function AddPatient() {
                     onChange={(e) => {
                       const iso = e.target.value
                       setPatientField('birthdate', iso)
-                      setBirthdateInput(formatBirthdateDisplay(iso))
+                      setBirthdateInput(formatBirthdateLongDisplay(iso))
                     }}
                     tabIndex={-1}
                     aria-hidden="true"
@@ -942,7 +963,7 @@ function AddPatient() {
                 </select>
               </label>
               <label>
-                <span className="required-label">Age<span className="required-asterisk">*</span></span>
+                <span className="required-label">Age</span>
                 <input className={`is-locked ${invalidPatientFields.age ? 'input-error' : ''}`.trim()} type="text" required value={patientInfo.age} readOnly />
               </label>
               <label>

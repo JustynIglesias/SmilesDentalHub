@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
 
@@ -287,12 +288,11 @@ function PatientLogs() {
             <div className="records-filter-panel patient-logs-filter-panel">
               <label className="inline-field" htmlFor="logs-filter-date-from">
                 Date From:
-                <input
+                <FilterDateInput
                   id="logs-filter-date-from"
-                  type="date"
                   value={dateFromFilter}
-                  onChange={(event) => {
-                    setDateFromFilter(event.target.value)
+                  onChange={(nextValue) => {
+                    setDateFromFilter(nextValue)
                     setCurrentPage(1)
                     setPageInput('1')
                   }}
@@ -300,12 +300,11 @@ function PatientLogs() {
               </label>
               <label className="inline-field" htmlFor="logs-filter-date-to">
                 Date To:
-                <input
+                <FilterDateInput
                   id="logs-filter-date-to"
-                  type="date"
                   value={dateToFilter}
-                  onChange={(event) => {
-                    setDateToFilter(event.target.value)
+                  onChange={(nextValue) => {
+                    setDateToFilter(nextValue)
                     setCurrentPage(1)
                     setPageInput('1')
                   }}

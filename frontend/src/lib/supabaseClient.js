@@ -12,8 +12,8 @@ if (!supabaseAnonKey) missingSupabaseEnv.push('VITE_SUPABASE_ANON_KEY')
 export const supabase = missingSupabaseEnv.length === 0
   ? createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      // Do not persist auth between app/browser restarts so each launch returns to login.
-      persistSession: false,
+      // Keep auth across refreshes so protected routes do not bounce back to login.
+      persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
     },

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
 
@@ -523,12 +524,11 @@ function PatientRecords() {
               </label>
               <label className="inline-field" htmlFor="patient-filter-registered-from">
                 Registered From:
-                <input
+                <FilterDateInput
                   id="patient-filter-registered-from"
-                  type="date"
                   value={registeredFromFilter}
-                  onChange={(event) => {
-                    setRegisteredFromFilter(event.target.value)
+                  onChange={(nextValue) => {
+                    setRegisteredFromFilter(nextValue)
                     setCurrentPage(1)
                     setPageInput('1')
                   }}
@@ -536,12 +536,11 @@ function PatientRecords() {
               </label>
               <label className="inline-field" htmlFor="patient-filter-registered-to">
                 Registered To:
-                <input
+                <FilterDateInput
                   id="patient-filter-registered-to"
-                  type="date"
                   value={registeredToFilter}
-                  onChange={(event) => {
-                    setRegisteredToFilter(event.target.value)
+                  onChange={(nextValue) => {
+                    setRegisteredToFilter(nextValue)
                     setCurrentPage(1)
                     setPageInput('1')
                   }}

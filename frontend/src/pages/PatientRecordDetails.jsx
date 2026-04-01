@@ -152,6 +152,23 @@ const initialServiceForm = () => ({
   discountType: 'peso',
   discountValue: '',
 })
+const createServiceFormFromRow = (row, serviceOptions = []) => {
+  if (!row?.lines?.length) return initialServiceForm()
+  const totalDiscount = roundMoney(row.lines.reduce((sum, line) => sum + Number(line.discountAmount ?? 0), 0))
+  const resolvedDiscountType = row.lines.some((line) => line.discountType === 'percent') ? 'percent' : 'peso'
+
+  return {
+    date: row.date,
+    originalDate: row.date,
+    lines: row.lines.map((line) => ({
+      serviceId: line.serviceId,
+      quantity: line.quantity ?? 1,
+      unitPrice: line.unitPrice ?? serviceOptions.find((service) => service.id === line.serviceId)?.price ?? '',
+    })),
+    discountType: resolvedDiscountType,
+    discountValue: totalDiscount,
+  }
+}
 
 const DEFAULT_DENTAL_RECORD = {
   toothMap: createToothMap(),
@@ -268,17 +285,6 @@ const normalizeDateInputTyping = (value) => {
   if (digits.length <= 2) return digits
   if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
-}
-
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  const time = date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-  return `${formatDateOnly(date)} ${time}`
 }
 
 const formatDateTimeLong = (value) => {
@@ -538,6 +544,8 @@ function YesNoEditor({ questions, historyState, setHistoryState }) {
 function PatientRecordDetails({ currentRole, currentProfile }) {
   const navigate = useNavigate()
   const { id } = useParams()
+  const isReceptionist = currentRole === 'receptionist'
+  const canManageServiceDetails = !isReceptionist
 
   const [tab, setTab] = useState('patient')
   const [modal, setModal] = useState(null)
@@ -561,6 +569,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   const [serviceFormError, setServiceFormError] = useState('')
   const [serviceForm, setServiceForm] = useState(() => initialServiceForm())
   const [isServiceSaveConfirmOpen, setIsServiceSaveConfirmOpen] = useState(false)
+  const [pendingDentalSave, setPendingDentalSave] = useState(null)
   const [dentalRecordHistory, setDentalRecordHistory] = useState([])
   const [selectedDentalRecordId, setSelectedDentalRecordId] = useState('')
   const [dentalRecord, setDentalRecord] = useState(() => cloneDentalRecord(DEFAULT_DENTAL_RECORD))
@@ -1106,10 +1115,18 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     if (['details', 'health', 'allergen', 'dental-history', 'medical-history'].includes(modal)) {
       restoreSnapshot()
     }
+    if (modal === 'service-edit' && pendingDentalSave) {
+      setServiceFormError('')
+      setIsServiceSaveConfirmOpen(false)
+      setSelectedService(null)
+      setModal('dental-record')
+      return
+    }
     setServiceFormError('')
     setIsServiceSaveConfirmOpen(false)
     setSelectedService(null)
     setDentalRecordForm(cloneDentalRecord(dentalRecord))
+    setPendingDentalSave(null)
     setExportPreviewHtml('')
     setModal(null)
   }
@@ -1165,29 +1182,26 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const openServiceEdit = (row = null) => {
+    if (isReceptionist && !row) {
+      setError('Receptionist cannot add service records.')
+      return
+    }
+
     setServiceFormError('')
     setIsServiceSaveConfirmOpen(false)
     setIsSaving(false)
     if (row) {
       if (!row.lines || row.lines.length === 0) {
+        if (isReceptionist) {
+          setError('No editable service lines were found for this record.')
+          return
+        }
         setServiceForm(initialServiceForm())
         setModal('service-edit')
         return
       }
 
-      const totalDiscount = roundMoney(row.lines.reduce((sum, line) => sum + Number(line.discountAmount ?? 0), 0))
-      const resolvedDiscountType = row.lines.some((line) => line.discountType === 'percent') ? 'percent' : 'peso'
-      setServiceForm({
-        date: row.date,
-        originalDate: row.date,
-        lines: row.lines.map((line) => ({
-          serviceId: line.serviceId,
-          quantity: line.quantity ?? 1,
-          unitPrice: serviceOptions.find((service) => service.id === line.serviceId)?.price ?? line.unitPrice ?? '',
-        })),
-        discountType: resolvedDiscountType,
-        discountValue: totalDiscount,
-      })
+      setServiceForm(createServiceFormFromRow(row, serviceOptions))
     } else {
       setServiceForm(initialServiceForm())
     }
@@ -1200,6 +1214,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const updateServiceLine = (index, patch) => {
+    if (!canManageServiceDetails) return
     if (serviceFormError) setServiceFormError('')
     setServiceForm((previous) => ({
       ...previous,
@@ -1223,6 +1238,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const addServiceLine = () => {
+    if (!canManageServiceDetails) return
     setServiceForm((previous) => ({
       ...previous,
       lines: [...previous.lines, initialServiceLine()],
@@ -1230,6 +1246,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const removeServiceLine = (index) => {
+    if (!canManageServiceDetails) return
     setServiceForm((previous) => ({
       ...previous,
       lines: previous.lines.filter((_, lineIndex) => lineIndex !== index),
@@ -1239,6 +1256,25 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   const serviceAmounts = useMemo(() => calculateServiceAmounts(serviceForm), [serviceForm])
 
   const logPatientAction = useCallback(async (action, details) => {
+    if (action === 'service_update') {
+      const localNow = new Date()
+      const localStart = new Date(localNow.getFullYear(), localNow.getMonth(), localNow.getDate(), 0, 0, 0, 0)
+      const localEnd = new Date(localNow.getFullYear(), localNow.getMonth(), localNow.getDate() + 1, 0, 0, 0, 0)
+      const { data: existingLog, error: existingLogError } = await supabase
+        .from('patient_logs')
+        .select('id, created_at')
+        .eq('patient_id', id)
+        .eq('action', action)
+        .gte('created_at', localStart.toISOString())
+        .lt('created_at', localEnd.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (existingLogError) throw existingLogError
+      if (existingLog) return
+    }
+
     const { error: logError } = await supabase.from('patient_logs').insert({ patient_id: id, action, details })
     if (logError) throw logError
   }, [id])
@@ -1347,6 +1383,26 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     })
   }
 
+  const resolveServiceDiscountAmount = (subtotal) => {
+    const rawDiscount = `${serviceForm.discountValue ?? ''}`.trim()
+
+    if (serviceForm.discountType === 'percent') {
+      const percent = rawDiscount === '' ? 0 : Number(rawDiscount)
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        return { error: 'Discount percent must be between 0 and 100.' }
+      }
+
+      return { discountAmount: roundMoney((subtotal * percent) / 100) }
+    }
+
+    const parsedDiscount = rawDiscount === '' ? 0 : toMoney(rawDiscount)
+    if (parsedDiscount === null) {
+      return { error: 'Please enter a valid discount amount.' }
+    }
+
+    return { discountAmount: roundMoney(parsedDiscount) }
+  }
+
   const saveService = async () => {
     setServiceFormError('')
     setError('')
@@ -1356,7 +1412,17 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       return false
     }
 
-    const incompleteLine = (serviceForm.lines ?? []).find((line) => {
+    if (isReceptionist && !serviceForm.originalDate) {
+      setServiceFormError('Receptionist cannot add service records.')
+      return false
+    }
+
+    if (isReceptionist && serviceForm.originalDate !== serviceForm.date) {
+      setServiceFormError('Receptionist can only adjust discounts on the existing service date.')
+      return false
+    }
+
+    const incompleteLine = isReceptionist ? null : (serviceForm.lines ?? []).find((line) => {
       const hasService = Boolean(line.serviceId)
       const hasTypedAmount = `${line.unitPrice ?? ''}`.trim() !== ''
       const hasCustomQuantity = Number(line.quantity ?? 1) !== 1
@@ -1367,7 +1433,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       return false
     }
 
-    const invalidLine = (serviceForm.lines ?? []).find((line) => (
+    const invalidLine = isReceptionist ? null : (serviceForm.lines ?? []).find((line) => (
       line.serviceId && (toServiceQuantity(line.quantity) === null || toMoney(line.unitPrice) === null)
     ))
     if (invalidLine) {
@@ -1375,55 +1441,11 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       return false
     }
 
-    const preparedLines = aggregateServiceLines(serviceForm.lines ?? [])
-    if (preparedLines.length === 0) {
+    const preparedLines = isReceptionist ? [] : aggregateServiceLines(serviceForm.lines ?? [])
+    if (!isReceptionist && preparedLines.length === 0) {
       setServiceFormError('Please add at least one service.')
       return false
     }
-
-    const subtotal = roundMoney(preparedLines.reduce((sum, line) => sum + line.lineAmount, 0))
-    const rawDiscount = `${serviceForm.discountValue ?? ''}`.trim()
-    let discountAmount = 0
-
-    if (serviceForm.discountType === 'percent') {
-      const percent = rawDiscount === '' ? 0 : Number(rawDiscount)
-      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-        setServiceFormError('Discount percent must be between 0 and 100.')
-        return false
-      }
-      discountAmount = roundMoney((subtotal * percent) / 100)
-    } else {
-      const parsedDiscount = rawDiscount === '' ? 0 : toMoney(rawDiscount)
-      if (parsedDiscount === null) {
-        setServiceFormError('Please enter a valid discount amount.')
-        return false
-      }
-      discountAmount = roundMoney(parsedDiscount)
-    }
-
-    if (discountAmount > subtotal) {
-      setServiceFormError('Discount cannot be greater than amount.')
-      return false
-    }
-
-    let discountLeft = roundMoney(discountAmount)
-    const preparedLinesWithTotals = preparedLines.map((line, index) => {
-      let lineDiscount = 0
-      if (discountAmount > 0) {
-        if (index === preparedLines.length - 1) {
-          lineDiscount = roundMoney(discountLeft)
-        } else {
-          lineDiscount = roundMoney((discountAmount * line.lineAmount) / subtotal)
-          discountLeft = roundMoney(discountLeft - lineDiscount)
-        }
-      }
-      const clampedDiscount = Math.min(line.lineAmount, Math.max(0, lineDiscount))
-      return {
-        ...line,
-        discountAmount: clampedDiscount,
-        totalAmount: roundMoney(line.lineAmount - clampedDiscount),
-      }
-    })
 
     setIsSaving(true)
     try {
@@ -1440,7 +1462,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 
         const { data, error: fetchError } = await supabase
           .from('service_records')
-          .select('id, service_id, quantity, unit_price, discount_amount')
+          .select('id, service_id, quantity, unit_price, discount_amount, amount, notes')
           .eq('patient_id', id)
           .is('archived_at', null)
           .gte('visit_at', start.toISOString())
@@ -1449,6 +1471,133 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 
         if (fetchError) throw fetchError
         return data ?? []
+      }
+
+      if (isReceptionist) {
+        const editableRows = await loadRowsByDate(serviceForm.originalDate)
+
+        if (editableRows.length === 0) {
+          setServiceFormError('No service record was found for the selected date.')
+          return false
+        }
+
+        const subtotal = roundMoney(
+          editableRows.reduce((sum, row) => sum + roundMoney(Math.max(1, Number(row.quantity ?? 1)) * Math.max(0, Number(row.unit_price ?? 0))), 0),
+        )
+        const { discountAmount, error: discountError } = resolveServiceDiscountAmount(subtotal)
+
+        if (discountError) {
+          setServiceFormError(discountError)
+          return false
+        }
+
+        if (discountAmount > subtotal) {
+          setServiceFormError('Discount cannot be greater than amount.')
+          return false
+        }
+
+        let discountLeft = roundMoney(discountAmount)
+
+        for (let index = 0; index < editableRows.length; index += 1) {
+          const row = editableRows[index]
+          const lineAmount = roundMoney(Math.max(1, Number(row.quantity ?? 1)) * Math.max(0, Number(row.unit_price ?? 0)))
+          let lineDiscount = 0
+
+          if (discountAmount > 0) {
+            if (index === editableRows.length - 1) {
+              lineDiscount = roundMoney(discountLeft)
+            } else {
+              lineDiscount = roundMoney((discountAmount * lineAmount) / subtotal)
+              discountLeft = roundMoney(discountLeft - lineDiscount)
+            }
+          }
+
+          const clampedDiscount = Math.min(lineAmount, Math.max(0, lineDiscount))
+          const payload = {
+            discount_amount: clampedDiscount,
+            amount: roundMoney(lineAmount - clampedDiscount),
+            notes: JSON.stringify({ discountType: serviceForm.discountType }),
+            updated_by: actorId,
+          }
+
+          const { error: updateError } = await supabase
+            .from('service_records')
+            .update(payload)
+            .eq('id', row.id)
+            .eq('patient_id', id)
+
+          if (updateError) throw updateError
+        }
+
+        await logPatientAction('service_update', `Updated service discount for ${serviceForm.originalDate}`)
+        await loadServiceRows()
+        close()
+        return true
+      }
+
+      const subtotal = roundMoney(preparedLines.reduce((sum, line) => sum + line.lineAmount, 0))
+      const { discountAmount, error: discountError } = resolveServiceDiscountAmount(subtotal)
+
+      if (discountError) {
+        setServiceFormError(discountError)
+        return false
+      }
+
+      if (discountAmount > subtotal) {
+        setServiceFormError('Discount cannot be greater than amount.')
+        return false
+      }
+
+      let discountLeft = roundMoney(discountAmount)
+      const preparedLinesWithTotals = preparedLines.map((line, index) => {
+        let lineDiscount = 0
+        if (discountAmount > 0) {
+          if (index === preparedLines.length - 1) {
+            lineDiscount = roundMoney(discountLeft)
+          } else {
+            lineDiscount = roundMoney((discountAmount * line.lineAmount) / subtotal)
+            discountLeft = roundMoney(discountLeft - lineDiscount)
+          }
+        }
+        const clampedDiscount = Math.min(line.lineAmount, Math.max(0, lineDiscount))
+        return {
+          ...line,
+          discountAmount: clampedDiscount,
+          totalAmount: roundMoney(line.lineAmount - clampedDiscount),
+        }
+      })
+
+      if (pendingDentalSave) {
+        const rpcPayload = {
+          p_patient_id: pendingDentalSave.patientId,
+          p_findings: pendingDentalSave.findings,
+          p_treatment: pendingDentalSave.treatment,
+          p_chart_data: pendingDentalSave.chartData,
+          p_recorded_at: pendingDentalSave.recordedAt,
+          p_visit_date: serviceForm.date,
+          p_service_lines: preparedLinesWithTotals.map((line) => ({
+            serviceId: line.serviceId,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            discountAmount: line.discountAmount,
+            totalAmount: line.totalAmount,
+          })),
+          p_discount_type: serviceForm.discountType,
+        }
+
+        const { error: saveBundleError } = await supabase.rpc('save_dental_record_with_service', rpcPayload)
+        if (saveBundleError) throw saveBundleError
+
+        await logPatientAction('dental_update', 'Updated dental record')
+        await logPatientAction('service_update', `Added service record for ${serviceForm.date}`)
+        await Promise.all([loadDentalRecord(), loadServiceRows()])
+        setServiceForm(initialServiceForm())
+        setServiceFormError('')
+        setIsServiceSaveConfirmOpen(false)
+        setSelectedService(null)
+        setPendingDentalSave(null)
+        setModal(null)
+        return true
       }
 
       const targetDateRows = await loadRowsByDate(serviceForm.date)
@@ -1568,6 +1717,23 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }
 
   const requestServiceSave = () => {
+    if (isReceptionist) {
+      if (!serviceForm.originalDate) {
+        setServiceFormError('Receptionist cannot add service records.')
+        return
+      }
+
+      setModal(null)
+      setIsServiceSaveConfirmOpen(true)
+      return
+    }
+
+    if (pendingDentalSave) {
+      setModal(null)
+      setIsServiceSaveConfirmOpen(true)
+      return
+    }
+
     const hasDentalRecordForDate = dentalRecordHistory.some((entry) => toLocalIsoDate(entry.recordedAt) === serviceForm.date)
 
     if (!hasDentalRecordForDate) {
@@ -1595,42 +1761,33 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       setError('Receptionist is not allowed to update dental records.')
       return
     }
-
-    setIsSaving(true)
     setError('')
+    setServiceFormError('')
+    const saveTimestamp = new Date().toISOString()
+    const saveDate = toLocalIsoDate(saveTimestamp)
+    const sameDayDentalEntry = dentalRecordHistory.find((entry) => toLocalIsoDate(entry.recordedAt) === saveDate)
+    const sameDayServiceRow = serviceRows.find((row) => row.date === saveDate)
 
-    try {
-      const { data: authData } = await supabase.auth.getUser()
-      const actorId = authData?.user?.id ?? null
-
-      const payload = {
-        patient_id: id,
-        tooth_number: 'ALL',
-        findings: dentalRecordForm.notes,
-        treatment: dentalRecordForm.prescriptions,
-        chart_data: {
-          toothMap: dentalRecordForm.toothMap,
-          periodontal: dentalRecordForm.periodontal,
-          occlusion: dentalRecordForm.occlusion,
-          prescriptions: dentalRecordForm.prescriptions,
-          notes: dentalRecordForm.notes,
-        },
-        recorded_at: new Date().toISOString(),
-        created_by: actorId,
-        updated_by: actorId,
-      }
-
-      let { error: insertError } = await supabase.from('dental_records').insert(payload)
-      if (insertError) throw insertError
-
-      await logPatientAction('dental_update', 'Updated dental record')
-      await loadDentalRecord()
-      close()
-    } catch (saveError) {
-      setError(normalizeError(saveError, 'Unable to save dental record.'))
-    } finally {
-      setIsSaving(false)
-    }
+    setPendingDentalSave({
+      patientId: id,
+      findings: dentalRecordForm.notes,
+      treatment: dentalRecordForm.prescriptions,
+      chartData: {
+        toothMap: dentalRecordForm.toothMap,
+        periodontal: dentalRecordForm.periodontal,
+        occlusion: dentalRecordForm.occlusion,
+        prescriptions: dentalRecordForm.prescriptions,
+        notes: dentalRecordForm.notes,
+        _recordId: sameDayDentalEntry?.id ?? null,
+        _replaceExistingService: Boolean(sameDayServiceRow),
+      },
+      recordedAt: saveTimestamp,
+    })
+    setServiceForm(sameDayServiceRow ? createServiceFormFromRow(sameDayServiceRow, serviceOptions) : {
+      ...initialServiceForm(),
+      date: saveDate,
+    })
+    setModal('service-edit')
   }
 
   const viewPatientDocument = (documentItem) => {
@@ -2103,7 +2260,6 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
               ) : null}
             </div>
           ) : null}
-          {tab === 'service' ? <button type="button" className="primary add-service-btn" onClick={() => openServiceEdit()}>+ Add Service Record</button> : null}
         </div>
 
         <div className={`patient-print-area ${tab === 'patient' ? 'active' : ''}`}>
@@ -2463,7 +2619,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 
       {modal === 'service-edit' ? (
         <div className="pr-modal service-ledger-modal">
-          <div className="pr-modal-head"><h2>{serviceForm.originalDate ? 'Edit' : 'Add'} Service Record</h2><button type="button" onClick={close}>X</button></div>
+          <div className="pr-modal-head"><h2>{isReceptionist ? 'Adjust Service Discount' : pendingDentalSave ? 'Required Service Record' : `${serviceForm.originalDate ? 'Edit' : 'Add'} Service Record`}</h2><button type="button" onClick={close}>X</button></div>
           <div className="pr-modal-body pr-modal-scroll">
             <div className="service-ledger-date">
               <span className="service-ledger-date-label">Date</span>
@@ -2475,9 +2631,11 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                   onClick={openDatePicker}
                   onFocus={openDatePicker}
                   onChange={(event) => { updateServiceForm({ date: event.target.value }) }}
+                  disabled={isReceptionist || Boolean(pendingDentalSave)}
                 />
               </label>
             </div>
+            {serviceFormError ? <div className="service-ledger-alert" role="alert">{serviceFormError}</div> : null}
             <div className="service-ledger-table">
               <div className="service-ledger-head"><span>Services</span><span>Quantity</span><span>Amount (PHP)</span><span>Remove</span></div>
               <div className="service-ledger-rows">
@@ -2485,13 +2643,13 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                   return (
                     <div key={`service-line-${index}`} className="service-ledger-row">
                       <div className="service-ledger-service-cell">
-                        <select value={line.serviceId} onChange={(event) => updateServiceLine(index, { serviceId: event.target.value })}>
+                        <select value={line.serviceId} onChange={(event) => updateServiceLine(index, { serviceId: event.target.value })} disabled={isReceptionist}>
                           <option value="">Select service</option>
                           {serviceOptions.map((service) => <option key={service.id} value={service.id}>{service.service_name}</option>)}
                         </select>
                       </div>
                       <div className="service-ledger-qty">
-                        <button type="button" className="service-ledger-qty-btn" onClick={() => updateServiceLine(index, { quantity: Math.max(1, Number(line.quantity || 1) - 1) })} disabled={!line.serviceId || Number(line.quantity || 1) <= 1}>-</button>
+                        <button type="button" className="service-ledger-qty-btn" onClick={() => updateServiceLine(index, { quantity: Math.max(1, Number(line.quantity || 1) - 1) })} disabled={isReceptionist || !line.serviceId || Number(line.quantity || 1) <= 1}>-</button>
                         <input
                           type="number"
                           inputMode="numeric"
@@ -2499,16 +2657,16 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                           step="1"
                           value={line.quantity ?? 1}
                           onChange={(event) => updateServiceLine(index, { quantity: event.target.value })}
-                          disabled={!line.serviceId}
+                          disabled={isReceptionist || !line.serviceId}
                         />
-                        <button type="button" className="service-ledger-qty-btn" onClick={() => updateServiceLine(index, { quantity: Number(line.quantity || 1) + 1 })} disabled={!line.serviceId}>+</button>
+                        <button type="button" className="service-ledger-qty-btn" onClick={() => updateServiceLine(index, { quantity: Number(line.quantity || 1) + 1 })} disabled={isReceptionist || !line.serviceId}>+</button>
                       </div>
                       <label className="service-ledger-amount">
                         <span>&#8369;</span>
-                        <input type="number" inputMode="decimal" value={line.unitPrice} min="0" step="0.01" onChange={(event) => updateServiceLine(index, { unitPrice: event.target.value })} />
+                        <input type="number" inputMode="decimal" value={line.unitPrice} min="0" step="0.01" onChange={(event) => updateServiceLine(index, { unitPrice: event.target.value })} disabled={isReceptionist} />
                       </label>
                       <div className="service-ledger-remove-cell">
-                        <button type="button" className="service-ledger-remove-line" onClick={() => removeServiceLine(index)} title="Remove service">
+                        <button type="button" className="service-ledger-remove-line" onClick={() => removeServiceLine(index)} title="Remove service" disabled={isReceptionist}>
                           &#10005;
                         </button>
                       </div>
@@ -2516,7 +2674,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                   )
                 })}
               </div>
-              <button type="button" className="service-ledger-add-line" onClick={addServiceLine}>+ Add another service</button>
+              {canManageServiceDetails ? <button type="button" className="service-ledger-add-line" onClick={addServiceLine}>+ Add another service</button> : null}
               <div className="service-ledger-discount-wrap">
                 <div className="service-ledger-discount-left">
                   <strong>Discount</strong>
@@ -2541,8 +2699,9 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
               </div>
               <div className="service-ledger-total"><strong>Total</strong><strong>{serviceAmounts.totalAmount === null ? '-' : `\u20B1 ${formatCurrency(serviceAmounts.totalAmount)}`}</strong></div>
             </div>
-            {serviceFormError ? <p className="nav-password-error service-ledger-error">{serviceFormError}</p> : null}
-            <div className="modal-actions"><button type="button" className="danger-btn" onClick={close}>Cancel</button><button type="button" className="success-btn" onClick={requestServiceSave}>{serviceForm.originalDate ? 'Update' : 'Add'}</button></div>
+            {pendingDentalSave ? <p className="service-ledger-helper">Complete this service record to finish saving the dental record.</p> : null}
+            {isReceptionist ? <p className="service-ledger-helper">Only the discount can be updated for this service record.</p> : null}
+            <div className="modal-actions"><button type="button" className="danger-btn" onClick={close}>{pendingDentalSave ? 'Back' : 'Cancel'}</button><button type="button" className="success-btn" onClick={requestServiceSave}>{isReceptionist ? 'Update Discount' : pendingDentalSave ? 'Save Dental Record and Service' : serviceForm.originalDate ? 'Update' : 'Add'}</button></div>
           </div>
         </div>
       ) : null}
@@ -2553,7 +2712,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
           <div className="pr-modal service-confirm-modal">
             <div className="pr-modal-head"><h2>Confirm</h2></div>
             <div className="pr-modal-body">
-              <p>Are you sure you want to {serviceForm.originalDate ? 'update' : 'add'} this service record?</p>
+              <p>Are you sure you want to {isReceptionist ? 'update the discount for' : pendingDentalSave ? 'save the dental record together with' : serviceForm.originalDate ? 'update' : 'add'} this service record?</p>
               <div className="modal-actions">
                 <button type="button" className="danger-btn" onClick={cancelServiceSaveConfirm}>Cancel</button>
                 <button type="button" className="success-btn" onClick={() => { void confirmServiceSave() }}>Yes</button>
@@ -2598,7 +2757,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
 
             <div className="pr-modal-section-title">Fill the Details</div>
             <div className="pr-dental-modal-notes"><label>Dental Prescriptions<textarea value={dentalRecordForm.prescriptions} onChange={(event) => setDentalRecordForm((previous) => ({ ...previous, prescriptions: event.target.value }))} /></label><label>Dental Notes<textarea value={dentalRecordForm.notes} onChange={(event) => setDentalRecordForm((previous) => ({ ...previous, notes: event.target.value }))} /></label></div>
-            <div className="modal-actions center"><button type="button" className="danger-btn" onClick={close}>Cancel</button><button type="button" className="success-btn" onClick={() => { void saveDentalRecord() }} disabled={isSaving || currentRole === 'receptionist'}>Save</button></div>
+            <div className="modal-actions center"><button type="button" className="danger-btn" onClick={close}>Cancel</button><button type="button" className="success-btn" onClick={() => { void saveDentalRecord() }} disabled={isSaving || currentRole === 'receptionist'}>Next: Add Service</button></div>
           </div>
         </div>
       ) : null}

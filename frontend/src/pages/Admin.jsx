@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
 
@@ -1669,11 +1670,11 @@ function Admin() {
               </label>
               <label className="inline-field" htmlFor="admin-filter-created-from">
                 Date Created From:
-                <input id="admin-filter-created-from" type="date" value={usersCreatedFromFilter} onChange={(event) => { setUsersCreatedFromFilter(event.target.value); setUsersPage(1); setUsersPageInput('1') }} />
+                <FilterDateInput id="admin-filter-created-from" value={usersCreatedFromFilter} onChange={(nextValue) => { setUsersCreatedFromFilter(nextValue); setUsersPage(1); setUsersPageInput('1') }} />
               </label>
               <label className="inline-field" htmlFor="admin-filter-created-to">
                 Date Created To:
-                <input id="admin-filter-created-to" type="date" value={usersCreatedToFilter} onChange={(event) => { setUsersCreatedToFilter(event.target.value); setUsersPage(1); setUsersPageInput('1') }} />
+                <FilterDateInput id="admin-filter-created-to" value={usersCreatedToFilter} onChange={(nextValue) => { setUsersCreatedToFilter(nextValue); setUsersPage(1); setUsersPageInput('1') }} />
               </label>
             </div>
             <div className="modal-actions admin-records-filter-actions">
@@ -1711,11 +1712,11 @@ function Admin() {
               </label>
               <label className="inline-field" htmlFor="admin-inactive-filter-date-from">
                 Inactive Date From:
-                <input id="admin-inactive-filter-date-from" type="date" value={inactiveDateFromFilter} onChange={(event) => { setInactiveDateFromFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }} />
+                <FilterDateInput id="admin-inactive-filter-date-from" value={inactiveDateFromFilter} onChange={(nextValue) => { setInactiveDateFromFilter(nextValue); setInactivePage(1); setInactivePageInput('1') }} />
               </label>
               <label className="inline-field" htmlFor="admin-inactive-filter-date-to">
                 Inactive Date To:
-                <input id="admin-inactive-filter-date-to" type="date" value={inactiveDateToFilter} onChange={(event) => { setInactiveDateToFilter(event.target.value); setInactivePage(1); setInactivePageInput('1') }} />
+                <FilterDateInput id="admin-inactive-filter-date-to" value={inactiveDateToFilter} onChange={(nextValue) => { setInactiveDateToFilter(nextValue); setInactivePage(1); setInactivePageInput('1') }} />
               </label>
             </div>
             <div className="modal-actions admin-records-filter-actions">
@@ -1766,11 +1767,11 @@ function Admin() {
               ) : null}
               <label className="inline-field" htmlFor="admin-archive-filter-date-from">
                 Archive Date From:
-                <input id="admin-archive-filter-date-from" type="date" value={archiveDateFromFilter} onChange={(event) => { setArchiveDateFromFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }} />
+                <FilterDateInput id="admin-archive-filter-date-from" value={archiveDateFromFilter} onChange={(nextValue) => { setArchiveDateFromFilter(nextValue); setArchivePage(1); setArchivePageInput('1') }} />
               </label>
               <label className="inline-field" htmlFor="admin-archive-filter-date-to">
                 Archive Date To:
-                <input id="admin-archive-filter-date-to" type="date" value={archiveDateToFilter} onChange={(event) => { setArchiveDateToFilter(event.target.value); setArchivePage(1); setArchivePageInput('1') }} />
+                <FilterDateInput id="admin-archive-filter-date-to" value={archiveDateToFilter} onChange={(nextValue) => { setArchiveDateToFilter(nextValue); setArchivePage(1); setArchivePageInput('1') }} />
               </label>
             </div>
             <div className="modal-actions admin-records-filter-actions">

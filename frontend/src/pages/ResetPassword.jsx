@@ -144,7 +144,7 @@ function ResetPassword() {
                 autoComplete="new-password"
               />
             </label>
-            {error ? <p style={{ margin: 0, color: '#c0392b', fontSize: '0.9rem' }}>{error}</p> : null}
+            {error ? <p className="error">{error}</p> : null}
             {success ? <p style={{ margin: 0, color: '#1f7a35', fontSize: '0.9rem' }}>{success}</p> : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
               <button type="button" onClick={goToLogin}>Back to login</button>

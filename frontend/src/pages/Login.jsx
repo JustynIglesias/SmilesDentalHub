@@ -215,9 +215,18 @@ function Login({
         }
 
         .error {
-          color: #dc3545;
-          font-size: 0.85rem;
-          margin: -0.5rem 0 0;
+          width: 100%;
+          margin: 0;
+          padding: 10px 12px;
+          border: 1px solid #ef4444;
+          border-left: 5px solid #dc2626;
+          border-radius: 12px;
+          background: #fef2f2;
+          color: #991b1b;
+          font-size: 0.88rem;
+          font-weight: 600;
+          line-height: 1.4;
+          box-shadow: 0 6px 14px rgba(220, 38, 38, 0.1);
         }
 
         .submit {
@@ -308,9 +317,18 @@ function Login({
         }
 
         .forgot-card .forgot-error {
-          color: #dc3545;
-          font-size: 0.88rem;
+          width: 100%;
           margin: 0 0 10px;
+          padding: 10px 12px;
+          border: 1px solid #ef4444;
+          border-left: 5px solid #dc2626;
+          border-radius: 12px;
+          background: #fef2f2;
+          color: #991b1b;
+          font-size: 0.88rem;
+          font-weight: 600;
+          line-height: 1.4;
+          box-shadow: 0 6px 14px rgba(220, 38, 38, 0.1);
         }
 
         .forgot-card .forgot-success {

@@ -484,6 +484,250 @@ as $$
   );
 $$;
 
+create or replace function public.guard_service_record_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor_role public.staff_role;
+  line_amount numeric;
+begin
+  actor_role := public.current_staff_role();
+
+  if actor_role is null then
+    raise exception 'Forbidden: active staff account required.';
+  end if;
+
+  line_amount := round(
+    greatest(coalesce(new.quantity, 1), 1)::numeric
+    * greatest(coalesce(new.unit_price, 0), 0::numeric),
+    2
+  );
+  new.discount_amount := greatest(coalesce(new.discount_amount, 0), 0::numeric);
+
+  if new.discount_amount > line_amount then
+    raise exception 'Discount cannot be greater than amount.';
+  end if;
+
+  new.amount := greatest(0::numeric, round(line_amount - new.discount_amount, 2));
+
+  if tg_op = 'INSERT' then
+    if actor_role not in ('associate_dentist'::public.staff_role, 'admin'::public.staff_role) then
+      raise exception 'Forbidden: receptionist cannot create service records.';
+    end if;
+
+    return new;
+  end if;
+
+  if actor_role = 'receptionist'::public.staff_role then
+    if new.patient_id is distinct from old.patient_id
+      or new.service_id is distinct from old.service_id
+      or new.quantity is distinct from old.quantity
+      or new.unit_price is distinct from old.unit_price
+      or new.performed_by is distinct from old.performed_by
+      or new.visit_at is distinct from old.visit_at
+      or new.archived_at is distinct from old.archived_at
+      or new.archived_by is distinct from old.archived_by
+      or new.created_by is distinct from old.created_by
+      or new.created_at is distinct from old.created_at then
+      raise exception 'Forbidden: receptionist can only update service discounts.';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.save_dental_record_with_service(
+  p_patient_id uuid,
+  p_findings text,
+  p_treatment text,
+  p_chart_data jsonb,
+  p_recorded_at timestamptz,
+  p_visit_date date,
+  p_service_lines jsonb,
+  p_discount_type text default 'peso'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor_id uuid;
+  actor_role public.staff_role;
+  dental_record_id uuid;
+  existing_dental_record_id uuid;
+  replace_existing_service boolean;
+  visit_at_ts timestamptz;
+  line_item jsonb;
+  line_service_id uuid;
+  line_quantity integer;
+  line_unit_price numeric;
+  line_discount numeric;
+  line_total numeric;
+  existing_row_id uuid;
+  existing_quantity integer;
+  existing_discount numeric;
+  next_quantity integer;
+  next_discount numeric;
+  next_amount numeric;
+begin
+  actor_id := auth.uid();
+  actor_role := public.current_staff_role();
+
+  if actor_id is null or actor_role is null then
+    raise exception 'Forbidden: active staff account required.';
+  end if;
+
+  if actor_role not in ('associate_dentist'::public.staff_role, 'admin'::public.staff_role) then
+    raise exception 'Forbidden: only associate dentists and admins can save dental records with service records.';
+  end if;
+
+  if p_visit_date is null then
+    raise exception 'Service date is required.';
+  end if;
+
+  if jsonb_typeof(coalesce(p_service_lines, '[]'::jsonb)) <> 'array' or jsonb_array_length(coalesce(p_service_lines, '[]'::jsonb)) = 0 then
+    raise exception 'At least one service line is required.';
+  end if;
+
+  existing_dental_record_id := nullif(coalesce(p_chart_data ->> '_recordId', ''), '')::uuid;
+  replace_existing_service := coalesce((p_chart_data ->> '_replaceExistingService')::boolean, false);
+  visit_at_ts := ((p_visit_date::text || 'T12:00:00Z')::timestamptz);
+
+  if existing_dental_record_id is not null then
+    update public.dental_records
+    set
+      findings = p_findings,
+      treatment = p_treatment,
+      chart_data = (coalesce(p_chart_data, '{}'::jsonb) - '_recordId' - '_replaceExistingService'),
+      recorded_at = coalesce(p_recorded_at, recorded_at),
+      updated_by = actor_id
+    where id = existing_dental_record_id
+      and patient_id = p_patient_id
+    returning id into dental_record_id;
+
+    if dental_record_id is null then
+      raise exception 'Existing dental record was not found for the patient.';
+    end if;
+  else
+    insert into public.dental_records (
+      patient_id,
+      tooth_number,
+      findings,
+      treatment,
+      chart_data,
+      recorded_at,
+      created_by,
+      updated_by
+    ) values (
+      p_patient_id,
+      'ALL',
+      p_findings,
+      p_treatment,
+      (coalesce(p_chart_data, '{}'::jsonb) - '_recordId' - '_replaceExistingService'),
+      coalesce(p_recorded_at, now()),
+      actor_id,
+      actor_id
+    )
+    returning id into dental_record_id;
+  end if;
+
+  if replace_existing_service then
+    update public.service_records
+    set
+      archived_at = coalesce(archived_at, now()),
+      archived_by = coalesce(archived_by, actor_id),
+      updated_by = actor_id
+    where patient_id = p_patient_id
+      and archived_at is null
+      and (visit_at at time zone 'UTC')::date = p_visit_date;
+  end if;
+
+  for line_item in
+    select value
+    from jsonb_array_elements(p_service_lines) as value
+  loop
+    line_service_id := nullif(line_item ->> 'serviceId', '')::uuid;
+    line_quantity := greatest(coalesce((line_item ->> 'quantity')::integer, 1), 1);
+    line_unit_price := round(greatest(coalesce((line_item ->> 'unitPrice')::numeric, 0), 0::numeric), 2);
+    line_discount := round(greatest(coalesce((line_item ->> 'discountAmount')::numeric, 0), 0::numeric), 2);
+    line_total := round(greatest(coalesce((line_item ->> 'totalAmount')::numeric, 0), 0::numeric), 2);
+
+    if line_service_id is null then
+      raise exception 'Service ID is required for every service line.';
+    end if;
+
+    if line_discount > round(line_quantity::numeric * line_unit_price, 2) then
+      raise exception 'Discount cannot be greater than amount.';
+    end if;
+
+    if not replace_existing_service then
+      select sr.id, greatest(coalesce(sr.quantity, 1), 1), greatest(coalesce(sr.discount_amount, 0), 0::numeric)
+        into existing_row_id, existing_quantity, existing_discount
+      from public.service_records sr
+      where sr.patient_id = p_patient_id
+        and sr.service_id = line_service_id
+        and sr.archived_at is null
+        and (sr.visit_at at time zone 'UTC')::date = p_visit_date
+      order by coalesce(sr.created_at, sr.visit_at) asc, sr.id asc
+      limit 1
+      for update;
+    else
+      existing_row_id := null;
+      existing_quantity := null;
+      existing_discount := null;
+    end if;
+
+    if existing_row_id is not null and not replace_existing_service then
+      next_quantity := existing_quantity + line_quantity;
+      next_discount := round(existing_discount + line_discount, 2);
+      next_amount := round((next_quantity::numeric * line_unit_price) - next_discount, 2);
+
+      update public.service_records
+      set
+        quantity = next_quantity,
+        unit_price = line_unit_price,
+        discount_amount = greatest(0::numeric, next_discount),
+        amount = greatest(0::numeric, next_amount),
+        notes = jsonb_build_object('discountType', coalesce(nullif(trim(p_discount_type), ''), 'peso'))::text,
+        visit_at = visit_at_ts,
+        updated_by = actor_id
+      where id = existing_row_id;
+    else
+      insert into public.service_records (
+        patient_id,
+        service_id,
+        quantity,
+        unit_price,
+        discount_amount,
+        amount,
+        notes,
+        visit_at,
+        created_by,
+        updated_by
+      ) values (
+        p_patient_id,
+        line_service_id,
+        line_quantity,
+        line_unit_price,
+        line_discount,
+        greatest(0::numeric, line_total),
+        jsonb_build_object('discountType', coalesce(nullif(trim(p_discount_type), ''), 'peso'))::text,
+        visit_at_ts,
+        actor_id,
+        actor_id
+      );
+    end if;
+  end loop;
+
+  return dental_record_id;
+end;
+$$;
+
 create or replace function public.allowed_navigation()
 returns table (
   item_key text,
@@ -503,6 +747,11 @@ as $$
   where rnp.role = public.current_staff_role()
   order by ni.sort_order;
 $$;
+
+drop trigger if exists trg_service_records_role_guard on public.service_records;
+create trigger trg_service_records_role_guard
+before insert or update on public.service_records
+for each row execute function public.guard_service_record_write();
 
 create or replace function public.resolve_login_email(p_username text)
 returns text
@@ -534,6 +783,16 @@ stable
 security definer
 set search_path = public
 as $$
+  with ranked_logs as (
+    select
+      pl.*,
+      row_number() over (
+        partition by pl.patient_id, ((pl.created_at at time zone 'Asia/Manila')::date)
+        order by pl.created_at desc, pl.id desc
+      ) as same_day_rank
+    from public.patient_logs pl
+    where pl.action = 'service_update'::public.patient_log_action
+  )
   select
     pl.id,
     pl.patient_id,
@@ -543,7 +802,7 @@ as $$
     coalesce(dentist_sp.full_name, 'System') as actor_name,
     pl.action::text as action,
     pl.details
-  from public.patient_logs pl
+  from ranked_logs pl
   join public.patients p on p.id = pl.patient_id
   left join lateral (
     select
@@ -558,7 +817,7 @@ as $$
   left join public.staff_profiles dentist_sp
     on dentist_sp.user_id = coalesce(latest_dr.updated_by, latest_dr.created_by)
   where public.is_active_staff()
-    and pl.action = 'service_update'::public.patient_log_action
+    and pl.same_day_rank = 1
   order by pl.created_at desc;
 $$;
 
@@ -1054,11 +1313,15 @@ to authenticated
 using (public.is_active_staff());
 
 drop policy if exists service_records_insert_staff on public.service_records;
-create policy service_records_insert_staff
+drop policy if exists service_records_insert_clinical_staff on public.service_records;
+create policy service_records_insert_clinical_staff
 on public.service_records
 for insert
 to authenticated
-with check (public.is_active_staff());
+with check (
+  public.has_staff_role('associate_dentist'::public.staff_role)
+  or public.has_staff_role('admin'::public.staff_role)
+);
 
 drop policy if exists service_records_update_staff on public.service_records;
 create policy service_records_update_staff
@@ -1169,6 +1432,7 @@ grant execute on function public.allowed_navigation() to authenticated;
 grant execute on function public.current_staff_role() to authenticated;
 grant execute on function public.is_active_staff() to authenticated;
 grant execute on function public.has_staff_role(public.staff_role) to authenticated;
+grant execute on function public.save_dental_record_with_service(uuid, text, text, jsonb, timestamptz, date, jsonb, text) to authenticated;
 grant execute on function public.lookup_staff_names(uuid[]) to authenticated;
 grant execute on function public.resolve_login_email(text) to anon;
 grant execute on function public.resolve_login_email(text) to authenticated;

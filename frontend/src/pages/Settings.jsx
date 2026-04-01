@@ -148,6 +148,7 @@ const getProfileNameParts = (profile) => {
 }
 
 function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
+  const initialPasswordUpdatedAt = currentSessionUser?.user_metadata?.password_updated_at || ''
   const [profileView, setProfileView] = useState(currentProfile ?? null)
   const [profileForm, setProfileForm] = useState(() => {
     const parsedName = getProfileNameParts(currentProfile)
@@ -179,7 +180,11 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
   const [isEmailVerificationModalOpen, setIsEmailVerificationModalOpen] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
-  const [lastPasswordUpdatedAt, setLastPasswordUpdatedAt] = useState(currentSessionUser?.updated_at || '')
+  const [lastPasswordUpdatedAt, setLastPasswordUpdatedAt] = useState(initialPasswordUpdatedAt)
+
+  useEffect(() => {
+    setLastPasswordUpdatedAt(currentSessionUser?.user_metadata?.password_updated_at || '')
+  }, [currentSessionUser])
 
   useEffect(() => {
     setProfileView(currentProfile ?? null)
@@ -536,7 +541,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
 
       setNewPassword('')
       setConfirmPassword('')
-      setLastPasswordUpdatedAt(new Date().toISOString())
+      setLastPasswordUpdatedAt(payload?.passwordUpdatedAt || payload?.user?.user_metadata?.password_updated_at || '')
       setSuccessMessage('Password updated successfully.')
       setIsSuccessModalOpen(true)
       setIsSubmitting(false)

@@ -443,6 +443,17 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
       return res.status(400).json({ error: 'newPassword is required.' });
     }
 
+    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
+    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
+    if (requesterUserError || !requesterUserData?.user?.id) {
+      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
+    }
+
+    const passwordUpdatedAt = new Date().toISOString();
+    const existingUserMetadata = requesterUserData.user.user_metadata && typeof requesterUserData.user.user_metadata === 'object'
+      ? requesterUserData.user.user_metadata
+      : {};
+
     const response = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
       method: 'PUT',
       headers: {
@@ -450,7 +461,13 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
         apikey: config.supabaseAnonKey,
         Authorization: `Bearer ${req.accessToken}`,
       },
-      body: JSON.stringify({ password: newPassword }),
+      body: JSON.stringify({
+        password: newPassword,
+        data: {
+          ...existingUserMetadata,
+          password_updated_at: passwordUpdatedAt,
+        },
+      }),
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -466,6 +483,7 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
     return res.json({
       message: 'Password updated successfully.',
       user: payload?.user || null,
+      passwordUpdatedAt,
     });
   } catch (error) {
     return sendSupabaseError(res, error, 500);

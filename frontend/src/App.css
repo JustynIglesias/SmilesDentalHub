@@ -236,10 +236,18 @@ body {
 }
 
 .error {
-  color: #e33636;
-  font-weight: 500;
-  font-style: italic;
+  width: min(720px, 100%);
   margin: 0;
+  padding: 10px 14px;
+  border: 1px solid #ef4444;
+  border-left: 5px solid #dc2626;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 6px 14px rgba(220, 38, 38, 0.1);
 }
 
 .submit {
@@ -942,6 +950,42 @@ body {
   min-height: 42px;
   background: var(--surface);
   color: var(--text-dark);
+}
+
+.filter-date-input {
+  position: relative;
+  width: 100%;
+}
+
+.filter-date-display {
+  width: 100%;
+  padding-right: 42px !important;
+  cursor: pointer;
+}
+
+.filter-date-display::placeholder {
+  color: #8da1ae;
+}
+
+.filter-date-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #506978;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.filter-date-btn:hover {
+  background: #eef5f9;
 }
 
 .dental-history-select {
@@ -2028,6 +2072,7 @@ body {
 }
 
 .settings-error {
+  width: 100%;
   margin: 8px 0 0;
 }
 
@@ -3791,10 +3836,18 @@ body {
 }
 
 .nav-password-error {
+  width: min(720px, 100%);
   margin: 0;
-  color: #c42323;
-  font-weight: 600;
+  padding: 10px 14px;
+  border: 1px solid #ef4444;
+  border-left: 5px solid #dc2626;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
   font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 6px 14px rgba(220, 38, 38, 0.1);
 }
 
 .nav-password-actions {
@@ -5446,6 +5499,21 @@ body {
   width: min(600px, 100%);
   margin: 10px auto 0;
   font-size: 16px;
+}
+
+.service-ledger-alert {
+  width: min(950px, 100%);
+  margin: 14px auto 16px;
+  padding: 10px 14px;
+  border: 1px solid #ef4444;
+  border-left: 5px solid #dc2626;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 6px 14px rgba(220, 38, 38, 0.1);
 }
 
 .service-ledger-head {
