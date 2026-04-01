@@ -1232,7 +1232,7 @@ body {
 
 .logs-table .table-head,
 .logs-table .table-row {
-  grid-template-columns: 150px minmax(250px, 1.3fr) minmax(240px, 1.08fr) minmax(250px, 1.12fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .patient-logs-page {
@@ -1373,6 +1373,7 @@ body {
 .patient-logs-filter-modal .pr-modal-body {
   display: grid;
   gap: 18px;
+  overflow-x: hidden;
 }
 
 .patient-logs-filter-modal .patient-logs-filter-panel {
@@ -1381,6 +1382,7 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 16px 18px;
+  min-width: 0;
   border-color: #d7e4eb;
   background: #f8fbfd;
   box-shadow: none;
@@ -1390,6 +1392,7 @@ body {
   display: grid;
   gap: 6px;
   align-items: start;
+  min-width: 0;
 }
 
 .patient-logs-filter-modal .patient-logs-filter-panel .inline-field input {
@@ -4387,7 +4390,7 @@ body {
   
   .logs-table .table-head,
   .logs-table .table-row {
-    grid-template-columns: 90px 1.2fr 1.1fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .grid-two {
@@ -6927,6 +6930,7 @@ body {
 .admin-records-filter-modal .pr-modal-body {
   display: grid;
   gap: 18px;
+  overflow-x: hidden;
 }
 
 .admin-records-filter-modal .admin-records-filter-panel {
@@ -6935,6 +6939,7 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
   gap: 16px 18px;
+  min-width: 0;
   border-color: #d7e4eb;
   background: #f8fbfd;
   box-shadow: none;
@@ -6944,6 +6949,7 @@ body {
   display: grid;
   gap: 6px;
   align-items: start;
+  min-width: 0;
 }
 
 .admin-records-filter-modal .admin-records-filter-panel .inline-field input,
@@ -7350,6 +7356,7 @@ body {
 .patient-records-filter-modal .pr-modal-body {
   display: grid;
   gap: 18px;
+  overflow-x: hidden;
 }
 
 .patient-records-filter-modal .records-filter-panel {
@@ -7358,6 +7365,7 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
   gap: 16px 18px;
+  min-width: 0;
   border-color: #d7e4eb;
   background: #f8fbfd;
   box-shadow: none;
@@ -7367,6 +7375,7 @@ body {
   display: grid;
   gap: 6px;
   align-items: start;
+  min-width: 0;
 }
 
 .patient-records-filter-modal .records-filter-panel .inline-field input,
