@@ -1995,7 +1995,6 @@ function Admin() {
                 <button type="button" className="ghost" onClick={() => importFileInputRef.current?.click()}>Choose CSV File</button>
                 <span>{importFileName || 'No file selected yet.'}</span>
               </div>
-              <p className="admin-import-helper">Use the migration format from the `docs` folder. For the chart, enter values like `16:X; 14:C` in Top Tooth Chart and `18:F; 24:ABR` in Bottom Tooth Chart. In the compact format, only medical history Q2, Q4, and Q5 support note-style entries; the other medical history cells should be `YES` or `NO` only. For dental history, only `dental_q2_under_treatment` supports that note-style entry; the other dental history cells should be `YES` or `NO` only. Duplicate a patient row when the patient has multiple dental records.</p>
               {importError ? <p className="error">{importError}</p> : null}
               {importSummary ? (
                 <div className="admin-import-summary">

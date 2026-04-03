@@ -7,7 +7,6 @@ const { sendSupabaseError } = require('../lib/response');
 const {
   isSmtpConfigured,
   sendEmailChangeVerificationEmail,
-  sendFailedLoginAlertEmail,
   sendStaffOnboardingVerificationEmail,
   sendWelcomeTestEmail,
 } = require('../lib/mailer');
@@ -15,11 +14,8 @@ const {
 const router = express.Router();
 const emailChangeVerificationStore = new Map();
 const staffOnboardingVerificationStore = new Map();
-const failedLoginAttemptStore = new Map();
 const EMAIL_CHANGE_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
-const FAILED_LOGIN_ALERT_THRESHOLD = 4;
-const FAILED_LOGIN_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -34,42 +30,6 @@ function isPlaceholderStaffEmail(email) {
 
 function createSixDigitCode() {
   return crypto.randomInt(100000, 1000000).toString();
-}
-
-function clearFailedLoginAttempts(email) {
-  const normalizedEmail = normalizeString(email).toLowerCase();
-  if (!normalizedEmail) return;
-  failedLoginAttemptStore.delete(normalizedEmail);
-}
-
-function registerFailedLoginAttempt(email) {
-  const normalizedEmail = normalizeString(email).toLowerCase();
-  if (!normalizedEmail) {
-    return { attempts: 0, shouldNotify: false };
-  }
-
-  const existing = failedLoginAttemptStore.get(normalizedEmail) || {
-    attempts: 0,
-    firstFailedAt: Date.now(),
-    lastAlertSentAt: 0,
-  };
-
-  const nextEntry = {
-    ...existing,
-    attempts: existing.attempts + 1,
-  };
-
-  let shouldNotify = false;
-  if (
-    nextEntry.attempts >= FAILED_LOGIN_ALERT_THRESHOLD
-    && Date.now() - (nextEntry.lastAlertSentAt || 0) >= FAILED_LOGIN_ALERT_COOLDOWN_MS
-  ) {
-    shouldNotify = true;
-    nextEntry.lastAlertSentAt = Date.now();
-  }
-
-  failedLoginAttemptStore.set(normalizedEmail, nextEntry);
-  return { attempts: nextEntry.attempts, shouldNotify };
 }
 
 async function findAuthUserByEmail(serviceClient, email) {
@@ -298,7 +258,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'login and password are required.' });
     }
 
-    const resolvedEmail = login.includes('@') ? login.toLowerCase() : await resolveLoginEmail(login);
+    const resolvedEmail = await resolveLoginEmail(login);
     if (!resolvedEmail) {
       return res.status(401).json({ error: 'Invalid username/email or password.' });
     }
@@ -309,23 +269,7 @@ router.post('/login', async (req, res) => {
       password,
     });
 
-    if (error) {
-      const failedAttempt = registerFailedLoginAttempt(resolvedEmail);
-      if (failedAttempt.shouldNotify && isSmtpConfigured()) {
-        try {
-          await sendFailedLoginAlertEmail({
-            toEmail: resolvedEmail,
-            attemptedAt: new Date().toISOString(),
-            failedAttempts: failedAttempt.attempts,
-          });
-        } catch (_mailError) {
-          // Login should still fail normally even if the warning email could not be sent.
-        }
-      }
-      return sendSupabaseError(res, error, 401);
-    }
-
-    clearFailedLoginAttempts(resolvedEmail);
+    if (error) return sendSupabaseError(res, error, 401);
 
     return res.json({
       message: 'Login successful.',
@@ -443,17 +387,6 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
       return res.status(400).json({ error: 'newPassword is required.' });
     }
 
-    const requesterClient = createSupabaseClient({ accessToken: req.accessToken });
-    const { data: requesterUserData, error: requesterUserError } = await requesterClient.auth.getUser();
-    if (requesterUserError || !requesterUserData?.user?.id) {
-      return sendSupabaseError(res, requesterUserError || { message: 'Unable to resolve authenticated user.' }, 401);
-    }
-
-    const passwordUpdatedAt = new Date().toISOString();
-    const existingUserMetadata = requesterUserData.user.user_metadata && typeof requesterUserData.user.user_metadata === 'object'
-      ? requesterUserData.user.user_metadata
-      : {};
-
     const response = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
       method: 'PUT',
       headers: {
@@ -461,13 +394,7 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
         apikey: config.supabaseAnonKey,
         Authorization: `Bearer ${req.accessToken}`,
       },
-      body: JSON.stringify({
-        password: newPassword,
-        data: {
-          ...existingUserMetadata,
-          password_updated_at: passwordUpdatedAt,
-        },
-      }),
+      body: JSON.stringify({ password: newPassword }),
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -483,7 +410,6 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
     return res.json({
       message: 'Password updated successfully.',
       user: payload?.user || null,
-      passwordUpdatedAt,
     });
   } catch (error) {
     return sendSupabaseError(res, error, 500);
@@ -852,64 +778,6 @@ router.post('/admin-update-user-email', requireAccessToken, async (req, res) => 
     if (profileUpdateError) return sendSupabaseError(res, profileUpdateError);
 
     return res.json({ message: 'User email updated successfully.' });
-  } catch (error) {
-    return sendSupabaseError(res, error, 500);
-  }
-});
-
-router.post('/admin-delete-user', requireAccessToken, async (req, res) => {
-  try {
-    if (!config.supabaseServiceRoleKey) {
-      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for permanent user deletion.' });
-    }
-
-    const userId = normalizeString(req.body?.userId);
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required.' });
-    }
-
-    const adminContext = await requireAdminRequester(req.accessToken);
-    if (adminContext.errorResponse) {
-      const { status, payload } = adminContext.errorResponse;
-      return payload?.error ? res.status(status).json(payload) : sendSupabaseError(res, payload, status);
-    }
-
-    const { requesterUserData, serviceClient } = adminContext;
-    if (requesterUserData.user.id === userId) {
-      return res.status(400).json({ error: 'You cannot permanently delete your own account.' });
-    }
-
-    const { data: targetProfile, error: targetProfileError } = await serviceClient
-      .from('staff_profiles')
-      .select('user_id, full_name, email, role, is_active')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (targetProfileError) return sendSupabaseError(res, targetProfileError);
-    if (!targetProfile) {
-      return res.status(404).json({ error: 'User profile not found.' });
-    }
-    if (targetProfile.is_active) {
-      return res.status(400).json({ error: 'Only archived users can be permanently deleted.' });
-    }
-
-    const blockers = await collectHardDeleteUserBlockers(serviceClient, userId);
-    if (blockers.length > 0) {
-      return res.status(409).json({
-        error: `Unable to permanently delete this user because it is still referenced by: ${blockers.join(', ')}.`,
-      });
-    }
-
-    await cleanupNullableUserReferences(serviceClient, userId);
-
-    const { error: deleteAuthUserError } = await serviceClient.auth.admin.deleteUser(userId);
-    if (deleteAuthUserError) return sendSupabaseError(res, deleteAuthUserError);
-
-    return res.json({
-      message: 'User deleted permanently.',
-      userId,
-      email: targetProfile.email || null,
-    });
   } catch (error) {
     return sendSupabaseError(res, error, 500);
   }
