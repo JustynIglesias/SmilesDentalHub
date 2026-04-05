@@ -247,8 +247,14 @@ async function requireAuthenticatedRequester(accessToken) {
 }
 
 async function resolveLoginEmail(login) {
+  const normalizedLogin = normalizeString(login);
+  if (!normalizedLogin) return '';
+  if (EMAIL_PATTERN.test(normalizedLogin)) {
+    return normalizedLogin.toLowerCase();
+  }
+
   const client = createSupabaseClient();
-  const { data, error } = await client.rpc('resolve_login_email', { p_username: login });
+  const { data, error } = await client.rpc('resolve_login_email', { p_username: normalizedLogin });
   if (error) throw error;
   return normalizeString(data);
 }
