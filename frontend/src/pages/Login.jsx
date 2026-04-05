@@ -18,12 +18,14 @@ function Login({
   forgotSuccess,
   isVerifyingCode,
   isSendingReset,
+  isResendingForgotCode,
   isResettingPassword,
   onForgotUsernameChange,
   onForgotCodeChange,
   onForgotNewPasswordChange,
   onForgotConfirmPasswordChange,
   onForgotSubmit,
+  onForgotResendCode,
   onForgotVerifyCode,
   onForgotResetPassword,
   onForgotClose,
@@ -341,6 +343,16 @@ function Login({
           display: flex;
           justify-content: flex-end;
           gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .forgot-actions .forgot-secondary {
+          background: #e7f2f8;
+          color: #0b7aa6;
+        }
+
+        .forgot-actions .forgot-secondary:hover {
+          background: #d7ebf5;
         }
 
         .forgot-card button {
@@ -505,6 +517,9 @@ function Login({
                     value={forgotCode}
                     onChange={onForgotCodeChange}
                     autoComplete="one-time-code"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
                   />
                 ) : null}
                 {forgotStep === 'reset' ? (
@@ -529,7 +544,19 @@ function Login({
                 {forgotSuccess ? <p className="forgot-success">{forgotSuccess}</p> : null}
                 <div className="forgot-actions">
                   <button type="button" onClick={closeForgotModal}>Close</button>
-                  <button type="submit" disabled={isSendingReset || isVerifyingCode || isResettingPassword}>
+                  {forgotStep === 'verify' ? (
+                    <button
+                      type="button"
+                      className="forgot-secondary"
+                      onClick={() => {
+                        void onForgotResendCode?.()
+                      }}
+                      disabled={isResendingForgotCode || isVerifyingCode}
+                    >
+                      {isResendingForgotCode ? 'Resending...' : 'Resend code'}
+                    </button>
+                  ) : null}
+                  <button type="submit" disabled={isSendingReset || isVerifyingCode || isResendingForgotCode || isResettingPassword}>
                     {forgotStep === 'request' ? (isSendingReset ? 'Sending...' : 'Send code') : null}
                     {forgotStep === 'verify' ? (isVerifyingCode ? 'Verifying...' : 'Verify code') : null}
                     {forgotStep === 'reset' ? (isResettingPassword ? 'Saving...' : 'Save password') : null}

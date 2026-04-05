@@ -7,6 +7,7 @@ const { sendSupabaseError } = require('../lib/response');
 const {
   isSmtpConfigured,
   sendEmailChangeVerificationEmail,
+  sendPasswordResetVerificationEmail,
   sendStaffOnboardingVerificationEmail,
   sendWelcomeTestEmail,
 } = require('../lib/mailer');
@@ -14,8 +15,11 @@ const {
 const router = express.Router();
 const emailChangeVerificationStore = new Map();
 const staffOnboardingVerificationStore = new Map();
+const passwordResetVerificationStore = new Map();
 const EMAIL_CHANGE_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_CODE_EXPIRY_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -284,10 +288,12 @@ router.post('/login', async (req, res) => {
 router.post('/forgot-password', async (req, res) => {
   try {
     const login = normalizeString(req.body?.login);
-    const redirectTo = normalizeString(req.body?.redirectTo) || 'http://localhost:5173/reset-password';
 
     if (!login) {
       return res.status(400).json({ error: 'login is required.' });
+    }
+    if (!isSmtpConfigured()) {
+      return res.status(500).json({ error: 'SMTP is not configured for verification emails.' });
     }
 
     const resolvedEmail = login.includes('@') ? login.toLowerCase() : await resolveLoginEmail(login);
@@ -295,15 +301,32 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(404).json({ error: 'No active staff account found for that login.' });
     }
 
-    const client = createSupabaseClient();
-    const { error } = await client.auth.resetPasswordForEmail(resolvedEmail, { redirectTo });
+    const serviceClient = createSupabaseClient({ useServiceRole: true });
+    const existingAuthUser = await findAuthUserByEmail(serviceClient, resolvedEmail);
+    if (!existingAuthUser?.id) {
+      return res.status(404).json({ error: 'No active staff account found for that login.' });
+    }
 
-    if (error) return sendSupabaseError(res, error);
+    const code = createSixDigitCode();
+    const expiresAt = Date.now() + PASSWORD_RESET_CODE_EXPIRY_MS;
+
+    passwordResetVerificationStore.set(resolvedEmail, {
+      code,
+      userId: existingAuthUser.id,
+      expiresAt,
+      attempts: 0,
+    });
+
+    await sendPasswordResetVerificationEmail({
+      toEmail: resolvedEmail,
+      code,
+      expiresInMinutes: Math.round(PASSWORD_RESET_CODE_EXPIRY_MS / 60000),
+    });
 
     return res.json({
       message: 'Verification code sent to email.',
       email: resolvedEmail,
-      redirectTo,
+      expiresInMinutes: Math.round(PASSWORD_RESET_CODE_EXPIRY_MS / 60000),
     });
   } catch (error) {
     return sendSupabaseError(res, error);
@@ -318,25 +341,36 @@ router.post('/verify-reset-code', async (req, res) => {
     if (!login || !code) {
       return res.status(400).json({ error: 'login and code are required.' });
     }
+    if (!/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Verification code must be exactly 6 digits.' });
+    }
 
     const resolvedEmail = login.includes('@') ? login.toLowerCase() : await resolveLoginEmail(login);
     if (!resolvedEmail) {
       return res.status(404).json({ error: 'No active staff account found for that login.' });
     }
 
-    const client = createSupabaseClient();
-    const { data, error } = await client.auth.verifyOtp({
-      email: resolvedEmail,
-      token: code,
-      type: 'recovery',
-    });
-
-    if (error || !data?.session?.access_token) return sendSupabaseError(res, error || { message: 'Invalid code.' }, 401);
+    const storedVerification = passwordResetVerificationStore.get(resolvedEmail);
+    if (!storedVerification) {
+      return res.status(400).json({ error: 'No pending password reset request was found.' });
+    }
+    if (storedVerification.expiresAt < Date.now()) {
+      passwordResetVerificationStore.delete(resolvedEmail);
+      return res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
+    }
+    if (storedVerification.attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      passwordResetVerificationStore.delete(resolvedEmail);
+      return res.status(400).json({ error: 'Too many invalid attempts. Please request a new code.' });
+    }
+    if (storedVerification.code !== code) {
+      storedVerification.attempts += 1;
+      passwordResetVerificationStore.set(resolvedEmail, storedVerification);
+      return res.status(400).json({ error: 'Invalid verification code.' });
+    }
 
     return res.json({
       message: 'Code verified.',
-      session: data.session,
-      user: data.user,
+      email: resolvedEmail,
     });
   } catch (error) {
     return sendSupabaseError(res, error);
@@ -410,6 +444,66 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
     return res.json({
       message: 'Password updated successfully.',
       user: payload?.user || null,
+    });
+  } catch (error) {
+    return sendSupabaseError(res, error, 500);
+  }
+});
+
+router.post('/complete-forgot-password', async (req, res) => {
+  try {
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for password resets.' });
+    }
+
+    const login = normalizeString(req.body?.login);
+    const code = normalizeString(req.body?.code);
+    const newPassword = normalizeString(req.body?.newPassword);
+
+    if (!login || !code || !newPassword) {
+      return res.status(400).json({ error: 'login, code, and newPassword are required.' });
+    }
+    if (!/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Verification code must be exactly 6 digits.' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    const resolvedEmail = login.includes('@') ? login.toLowerCase() : await resolveLoginEmail(login);
+    if (!resolvedEmail) {
+      return res.status(404).json({ error: 'No active staff account found for that login.' });
+    }
+
+    const storedVerification = passwordResetVerificationStore.get(resolvedEmail);
+    if (!storedVerification) {
+      return res.status(400).json({ error: 'No pending password reset request was found.' });
+    }
+    if (storedVerification.expiresAt < Date.now()) {
+      passwordResetVerificationStore.delete(resolvedEmail);
+      return res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
+    }
+    if (storedVerification.attempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      passwordResetVerificationStore.delete(resolvedEmail);
+      return res.status(400).json({ error: 'Too many invalid attempts. Please request a new code.' });
+    }
+    if (storedVerification.code !== code) {
+      storedVerification.attempts += 1;
+      passwordResetVerificationStore.set(resolvedEmail, storedVerification);
+      return res.status(400).json({ error: 'Invalid verification code.' });
+    }
+
+    const serviceClient = createSupabaseClient({ useServiceRole: true });
+    const { error } = await serviceClient.auth.admin.updateUserById(storedVerification.userId, {
+      password: newPassword,
+    });
+    if (error) return sendSupabaseError(res, error, 400);
+
+    passwordResetVerificationStore.delete(resolvedEmail);
+
+    return res.json({
+      message: 'Password updated successfully.',
+      email: resolvedEmail,
     });
   } catch (error) {
     return sendSupabaseError(res, error, 500);

@@ -155,6 +155,48 @@ async function sendStaffOnboardingVerificationEmail({ toEmail, code, requestedBy
   return info;
 }
 
+async function sendPasswordResetVerificationEmail({ toEmail, code, expiresInMinutes = 10 }) {
+  const transporter = createTransporter();
+  const fromName = config.smtpFromName || 'Smiles Dental Hub';
+  const from = `"${fromName}" <${config.smtpFromEmail}>`;
+
+  const subject = 'Smiles Dental Hub - Password Reset Verification Code';
+  const text = [
+    'Hello,',
+    '',
+    'Use this code to reset your Smiles Dental Hub password:',
+    '',
+    `${code}`,
+    '',
+    `This code expires in ${expiresInMinutes} minutes.`,
+    '',
+    'If you did not request a password reset, you can ignore this email.',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+      <p>Hello,</p>
+      <p>Use this code to reset your <strong>Smiles Dental Hub</strong> password:</p>
+      <div style="margin:20px 0;padding:16px;border-radius:12px;background:#f4fafb;border:1px solid #d7e8ef;text-align:center">
+        <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#4c6b7a;margin-bottom:6px">Reset Code</div>
+        <div style="font-size:32px;font-weight:800;letter-spacing:0.18em;color:#0f6f96">${String(code)}</div>
+      </div>
+      <p><strong>This code expires in ${expiresInMinutes} minutes.</strong></p>
+      <p style="margin-top:16px">If you did not request a password reset, you can ignore this email.</p>
+    </div>
+  `;
+
+  const info = await transporter.sendMail({
+    from,
+    to: toEmail,
+    subject,
+    text,
+    html,
+  });
+
+  return info;
+}
+
 async function sendFailedLoginAlertEmail({ toEmail, attemptedAt, failedAttempts = 4 }) {
   const transporter = createTransporter();
   const fromName = config.smtpFromName || 'Smiles Dental Hub';
@@ -206,6 +248,7 @@ module.exports = {
   isSmtpConfigured,
   sendEmailChangeVerificationEmail,
   sendFailedLoginAlertEmail,
+  sendPasswordResetVerificationEmail,
   sendStaffOnboardingVerificationEmail,
   sendWelcomeTestEmail,
 };

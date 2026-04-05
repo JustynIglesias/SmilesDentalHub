@@ -139,12 +139,14 @@ function LoginRoute({
   forgotSuccess,
   isVerifyingCode,
   isSendingReset,
+  isResendingForgotCode,
   isResettingPassword,
   onForgotUsernameChange,
   onForgotCodeChange,
   onForgotNewPasswordChange,
   onForgotConfirmPasswordChange,
   onForgotSubmit,
+  onForgotResendCode,
   onForgotVerifyCode,
   onForgotResetPassword,
   onForgotClose,
@@ -167,12 +169,14 @@ function LoginRoute({
       forgotSuccess={forgotSuccess}
       isVerifyingCode={isVerifyingCode}
       isSendingReset={isSendingReset}
+      isResendingForgotCode={isResendingForgotCode}
       isResettingPassword={isResettingPassword}
       onForgotUsernameChange={onForgotUsernameChange}
       onForgotCodeChange={onForgotCodeChange}
       onForgotNewPasswordChange={onForgotNewPasswordChange}
       onForgotConfirmPasswordChange={onForgotConfirmPasswordChange}
       onForgotSubmit={onForgotSubmit}
+      onForgotResendCode={onForgotResendCode}
       onForgotVerifyCode={onForgotVerifyCode}
       onForgotResetPassword={onForgotResetPassword}
       onForgotClose={onForgotClose}
@@ -223,9 +227,8 @@ function AppRoutes() {
   const [forgotSuccess, setForgotSuccess] = useState('')
   const [isVerifyingCode, setIsVerifyingCode] = useState(false)
   const [isSendingReset, setIsSendingReset] = useState(false)
+  const [isResendingForgotCode, setIsResendingForgotCode] = useState(false)
   const [isResettingPassword, setIsResettingPassword] = useState(false)
-  const [forgotAccessToken, setForgotAccessToken] = useState('')
-  const [forgotRefreshToken, setForgotRefreshToken] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [staffOnboardingStep, setStaffOnboardingStep] = useState('details')
   const [staffOnboardingForm, setStaffOnboardingForm] = useState({
@@ -309,9 +312,8 @@ function AppRoutes() {
       setForgotSuccess('')
       setIsVerifyingCode(false)
       setIsSendingReset(false)
+      setIsResendingForgotCode(false)
       setIsResettingPassword(false)
-      setForgotAccessToken('')
-      setForgotRefreshToken('')
       setIsLogoutModalOpen(false)
       sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
     }
@@ -613,7 +615,8 @@ function AppRoutes() {
   }
 
   const handleForgotCodeChange = (event) => {
-    setForgotCode(event.target.value)
+    const nextValue = `${event.target.value || ''}`.replace(/\D/g, '').slice(0, 6)
+    setForgotCode(nextValue)
     setForgotError('')
     setForgotSuccess('')
   }
@@ -640,27 +643,27 @@ function AppRoutes() {
     setForgotSuccess('')
     setIsVerifyingCode(false)
     setIsSendingReset(false)
+    setIsResendingForgotCode(false)
     setIsResettingPassword(false)
-    setForgotAccessToken('')
-    setForgotRefreshToken('')
   }
 
-  const handleForgotSubmit = async (event) => {
-    event.preventDefault()
-
+  const requestForgotCode = async ({ showResendMessage = false } = {}) => {
     const username = forgotUsername.trim()
     if (!username) {
       setForgotError('Please enter your username.')
       setForgotSuccess('')
-      return
+      return false
     }
 
-    setIsSendingReset(true)
+    if (showResendMessage) {
+      setIsResendingForgotCode(true)
+    } else {
+      setIsSendingReset(true)
+    }
     setForgotError('')
     setForgotSuccess('')
 
     try {
-      const redirectTo = `${window.location.origin}/reset-password`
       const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/forgot-password', {
         method: 'POST',
         headers: {
@@ -668,28 +671,54 @@ function AppRoutes() {
         },
         body: JSON.stringify({
           login: username,
-          redirectTo,
         }),
       })
       if (!response.ok) {
         setForgotError(payload?.error || 'Unable to send reset email. Please try again.')
-        setIsSendingReset(false)
-        return
+        if (showResendMessage) {
+          setIsResendingForgotCode(false)
+        } else {
+          setIsSendingReset(false)
+        }
+        return false
       }
 
       setForgotUsername(payload?.email || username)
       setForgotCode('')
       setForgotStep('verify')
-      setForgotSuccess(`Verification code sent to ${payload?.email || username}. Check your email inbox for the latest code.`)
-      setIsSendingReset(false)
+      setForgotSuccess(
+        showResendMessage
+          ? `A new verification code was sent to ${payload?.email || username}. Check your email inbox for the latest code.`
+          : `Verification code sent to ${payload?.email || username}. Check your email inbox for the latest code.`,
+      )
+      if (showResendMessage) {
+        setIsResendingForgotCode(false)
+      } else {
+        setIsSendingReset(false)
+      }
+      return true
     } catch (requestError) {
       setForgotError(
         requestError?.code === BACKEND_STARTING_ERROR
           ? 'System is still starting. Please wait a moment and try again.'
           : 'Unable to send verification code. Please try again.',
       )
-      setIsSendingReset(false)
+      if (showResendMessage) {
+        setIsResendingForgotCode(false)
+      } else {
+        setIsSendingReset(false)
+      }
+      return false
     }
+  }
+
+  const handleForgotSubmit = async (event) => {
+    event.preventDefault()
+    await requestForgotCode()
+  }
+
+  const handleForgotResendCode = async () => {
+    await requestForgotCode({ showResendMessage: true })
   }
 
   const handleForgotVerifyCode = async (event) => {
@@ -700,6 +729,10 @@ function AppRoutes() {
 
     if (!username || !code) {
       setForgotError('Enter your username/email and verification code.')
+      return
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setForgotError('Enter the 6-digit verification code sent to your email.')
       return
     }
 
@@ -728,16 +761,6 @@ function AppRoutes() {
         return
       }
 
-      const accessToken = payload?.session?.access_token || ''
-      const refreshToken = payload?.session?.refresh_token || ''
-      if (!accessToken || !refreshToken) {
-        setForgotError('Verification succeeded, but no active session was returned. Please request a new code.')
-        setIsVerifyingCode(false)
-        return
-      }
-
-      setForgotAccessToken(accessToken)
-      setForgotRefreshToken(refreshToken)
       setForgotStep('reset')
       setForgotSuccess('Code verified. You can now set a new password.')
       setIsVerifyingCode(false)
@@ -756,12 +779,6 @@ function AppRoutes() {
 
     const newPassword = forgotNewPassword.trim()
     const confirmPassword = forgotConfirmPassword.trim()
-
-    if (!forgotAccessToken || !forgotRefreshToken) {
-      setForgotError('Verification session expired. Please request a new code.')
-      setForgotStep('request')
-      return
-    }
 
     if (!newPassword || !confirmPassword) {
       setForgotError('Please enter and confirm your new password.')
@@ -783,40 +800,17 @@ function AppRoutes() {
     setForgotSuccess('')
 
     try {
-      const updatePasswordWithToken = async (accessToken) => {
-        const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/update-password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            newPassword,
-          }),
-        })
-        return { response, payload }
-      }
-
-      let activeAccessToken = forgotAccessToken
-      let { response, payload } = await updatePasswordWithToken(activeAccessToken)
-
-      if (!response.ok && String(payload?.error || '').toLowerCase().includes('auth session missing')) {
-        const { response: refreshResponse, payload: refreshPayload } = await fetchJsonWithBackendRetry('/api/auth/refresh-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            refreshToken: forgotRefreshToken,
-          }),
-        })
-        if (refreshResponse.ok && refreshPayload?.session?.access_token && refreshPayload?.session?.refresh_token) {
-          activeAccessToken = refreshPayload.session.access_token
-          setForgotAccessToken(refreshPayload.session.access_token)
-          setForgotRefreshToken(refreshPayload.session.refresh_token)
-          ;({ response, payload } = await updatePasswordWithToken(activeAccessToken))
-        }
-      }
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/complete-forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          login: forgotUsername.trim(),
+          code: forgotCode.trim(),
+          newPassword,
+        }),
+      })
 
       if (!response.ok) {
         setForgotError(payload?.error || 'Unable to update password.')
@@ -828,8 +822,6 @@ function AppRoutes() {
       setForgotCode('')
       setForgotNewPassword('')
       setForgotConfirmPassword('')
-      setForgotAccessToken('')
-      setForgotRefreshToken('')
       setForgotSuccess('Password updated successfully. You can now log in.')
       setIsResettingPassword(false)
     } catch (requestError) {
@@ -1011,12 +1003,14 @@ function AppRoutes() {
               forgotSuccess={forgotSuccess}
               isVerifyingCode={isVerifyingCode}
               isSendingReset={isSendingReset}
+              isResendingForgotCode={isResendingForgotCode}
               isResettingPassword={isResettingPassword}
               onForgotUsernameChange={handleForgotUsernameChange}
               onForgotCodeChange={handleForgotCodeChange}
               onForgotNewPasswordChange={handleForgotNewPasswordChange}
               onForgotConfirmPasswordChange={handleForgotConfirmPasswordChange}
               onForgotSubmit={handleForgotSubmit}
+              onForgotResendCode={handleForgotResendCode}
               onForgotVerifyCode={handleForgotVerifyCode}
               onForgotResetPassword={handleForgotResetPassword}
               onForgotClose={handleForgotClose}
