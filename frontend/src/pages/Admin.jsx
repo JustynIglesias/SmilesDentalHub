@@ -165,6 +165,24 @@ const buildStaffFullName = ({ first_name, middle_name, last_name, suffix }) => (
     .trim()
 )
 
+const getUserFormNameParts = (profile) => {
+  const firstName = `${profile?.first_name ?? ''}`.trim()
+  const middleName = `${profile?.middle_name ?? ''}`.trim()
+  const lastName = `${profile?.last_name ?? ''}`.trim()
+  const suffix = `${profile?.suffix ?? ''}`.trim()
+
+  if (firstName || middleName || lastName || suffix) {
+    return {
+      firstName,
+      middleName,
+      lastName,
+      suffix,
+    }
+  }
+
+  return splitStaffProfileName(profile?.full_name || '')
+}
+
 const buildSystemUserEmail = (username) => {
   const normalizedUsername = `${username ?? ''}`
     .trim()
@@ -175,39 +193,33 @@ const buildSystemUserEmail = (username) => {
 }
 
 const formatStaffDisplayName = (profile) => {
-  const joinedFromColumns = buildStaffFullName({
-    first_name: profile?.first_name,
-    middle_name: profile?.middle_name,
-    last_name: profile?.last_name,
-    suffix: profile?.suffix,
-  })
-  const normalized = `${joinedFromColumns || profile?.full_name || ''}`.trim().replace(/\s+/g, ' ')
+  const firstName = `${profile?.first_name ?? ''}`.trim()
+  const middleName = `${profile?.middle_name ?? ''}`.trim()
+  const lastName = `${profile?.last_name ?? ''}`.trim()
+  const suffix = `${profile?.suffix ?? ''}`.trim()
+
+  if (firstName || middleName || lastName || suffix) {
+    const middleInitial = middleName ? `${middleName[0]?.toUpperCase() || ''}.` : ''
+    return [
+      lastName ? `${lastName},` : '',
+      firstName,
+      middleInitial,
+      suffix,
+    ].filter(Boolean).join(' ') || '-'
+  }
+
+  const normalized = `${profile?.full_name || ''}`.trim().replace(/\s+/g, ' ')
   if (!normalized) return '-'
 
-  const segments = normalized.split(' ')
-  let suffix = ''
-  const working = [...segments]
-  const trailing = working.at(-1)?.toLowerCase()
-
-  if (trailing && OPTIONAL_SUFFIXES.has(trailing)) {
-    suffix = working.pop() || ''
-  }
-
-  if (working.length === 1) {
-    return [working[0], suffix].filter(Boolean).join(' ')
-  }
-
-  const firstName = working[0] || ''
-  const lastName = working.at(-1) || ''
-  const middleNames = working.slice(1, -1)
-  const middleInitial = middleNames.length > 0 ? `${middleNames[0][0]?.toUpperCase() || ''}.` : ''
+  const { firstName: fallbackFirstName, middleName: fallbackMiddleName, lastName: fallbackLastName, suffix: fallbackSuffix } = splitStaffProfileName(normalized)
+  const middleInitial = fallbackMiddleName ? `${fallbackMiddleName[0]?.toUpperCase() || ''}.` : ''
 
   return [
-    `${lastName},`,
-    firstName,
+    fallbackLastName ? `${fallbackLastName},` : '',
+    fallbackFirstName,
     middleInitial,
-    suffix,
-  ].filter(Boolean).join(' ')
+    fallbackSuffix,
+  ].filter(Boolean).join(' ') || normalized
 }
 
 function Admin() {
@@ -483,7 +495,7 @@ function Admin() {
   }
 
   const openEditUser = (user) => {
-    const { firstName, middleName, lastName, suffix } = splitStaffProfileName(user.full_name)
+    const { firstName, middleName, lastName, suffix } = getUserFormNameParts(user)
     setUserForm({
       user_id: user.user_id,
       first_name: firstName,
@@ -512,7 +524,7 @@ function Admin() {
 
   const cancelUserEdit = () => {
     if (!selected) return
-    const { firstName, middleName, lastName, suffix } = splitStaffProfileName(selected.full_name)
+    const { firstName, middleName, lastName, suffix } = getUserFormNameParts(selected)
     setUserForm({
       user_id: selected.user_id,
       first_name: firstName,

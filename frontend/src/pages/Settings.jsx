@@ -137,6 +137,15 @@ const buildFullName = ({ firstName, middleName, lastName, suffix }) => (
     .trim()
 )
 
+const formatProfileFullName = (profile) => (
+  [
+    `${profile?.first_name || ''}`.trim(),
+    `${profile?.middle_name || ''}`.trim(),
+    `${profile?.last_name || ''}`.trim(),
+    `${profile?.suffix || ''}`.trim(),
+  ].filter(Boolean).join(' ') || `${profile?.full_name || ''}`.trim() || 'Staff User'
+)
+
 const getProfileNameParts = (profile) => {
   const fallback = splitProfileName(profile?.full_name)
   return {
@@ -563,7 +572,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
             <div className="settings-hero-card">
               <div className="settings-hero-copy">
                 <p className="settings-eyebrow">Account Center</p>
-                <h2>{profileSource?.full_name || 'Staff User'}</h2>
+                <h2>{formatProfileFullName(profileSource)}</h2>
                 <div className="settings-hero-meta">
                   <div className="settings-hero-chip">
                     <span>Staff ID</span>

@@ -300,6 +300,20 @@ const formatDateTimeLong = (value) => {
   })
 }
 
+const toPhilippineLocalMobileInput = (value = '') => {
+  const digits = `${value || ''}`.replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('63') && digits.length >= 12) return digits.slice(2, 12)
+  if (digits.startsWith('0') && digits.length >= 11) return digits.slice(1, 11)
+  if (digits.startsWith('9') && digits.length >= 10) return digits.slice(0, 10)
+  return digits.slice(0, 10)
+}
+
+const formatPhilippineE164 = (value = '') => {
+  const digits = toPhilippineLocalMobileInput(value)
+  return digits ? `+63${digits}` : null
+}
+
 const formatPhilippineMobileDisplay = (value = '') => {
   const digits = `${value || ''}`.replace(/\D/g, '')
   if (!digits) return '-'
@@ -542,6 +556,12 @@ function YesNoEditor({ questions, historyState, setHistoryState }) {
 }
 
 function PatientRecordDetails({ currentRole, currentProfile }) {
+  const preparedByName = [
+    `${currentProfile?.first_name || ''}`.trim(),
+    `${currentProfile?.middle_name || ''}`.trim(),
+    `${currentProfile?.last_name || ''}`.trim(),
+    `${currentProfile?.suffix || ''}`.trim(),
+  ].filter(Boolean).join(' ') || `${currentProfile?.full_name || ''}`.trim() || 'Dent22 User'
   const navigate = useNavigate()
   const { id } = useParams()
   const isReceptionist = currentRole === 'receptionist'
@@ -710,7 +730,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       middleName: row.middle_name || '',
       suffix: row.suffix || '',
       address: row.address || '',
-      mobile: row.phone || '',
+      mobile: toPhilippineLocalMobileInput(row.phone || ''),
       email: row.email || '',
       civilStatus: normalizeCivilStatus(row.civil_status),
       occupation: row.occupation || '',
@@ -719,7 +739,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       birthdate: row.birth_date || '',
       nickname: row.nickname || '',
       guardianName: row.guardian_name || row.emergency_contact_name || '',
-      guardianMobileNumber: row.guardian_mobile_number || row.emergency_contact_phone || '',
+      guardianMobileNumber: toPhilippineLocalMobileInput(row.guardian_mobile_number || row.emergency_contact_phone || ''),
       guardianOccupation: row.guardian_occupation || '',
       guardianOfficeAddress: row.guardian_office_address || '',
       authorizationAccepted: Boolean(row.authorization_accepted),
@@ -1313,6 +1333,22 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       setError('Please select sex as Male or Female.')
       return
     }
+    if (!patient.mobile.trim()) {
+      setError('Mobile number is required.')
+      return
+    }
+
+    const normalizedMobile = formatPhilippineE164(patient.mobile)
+    const normalizedGuardianMobile = formatPhilippineE164(patient.guardianMobileNumber)
+
+    if (!normalizedMobile) {
+      setError('Enter a valid Philippine mobile number.')
+      return
+    }
+    if (patient.guardianMobileNumber.trim() && !normalizedGuardianMobile) {
+      setError('Enter a valid guardian mobile number.')
+      return
+    }
 
     await updatePatientSection({
       first_name: toTitleCase(patient.firstName.trim()),
@@ -1321,7 +1357,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       suffix: toTitleCase(patient.suffix.trim()) || null,
       sex: normalizeSex(patient.sex),
       birth_date: patient.birthdate || null,
-      phone: patient.mobile.trim() || null,
+      phone: normalizedMobile,
       email: patient.email.trim() || null,
       address: toTitleCase(patient.address.trim()) || null,
       nickname: toTitleCase(patient.nickname.trim()) || null,
@@ -1329,9 +1365,9 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       occupation: toTitleCase(patient.occupation.trim()) || null,
       office_address: toTitleCase(patient.officeAddress.trim()) || null,
       emergency_contact_name: toTitleCase(patient.guardianName.trim()) || null,
-      emergency_contact_phone: patient.guardianMobileNumber.trim() || null,
+      emergency_contact_phone: normalizedGuardianMobile,
       guardian_name: toTitleCase(patient.guardianName.trim()) || null,
-      guardian_mobile_number: patient.guardianMobileNumber.trim() || null,
+      guardian_mobile_number: normalizedGuardianMobile,
       guardian_occupation: toTitleCase(patient.guardianOccupation.trim()) || null,
       guardian_office_address: toTitleCase(patient.guardianOfficeAddress.trim()) || null,
       authorization_accepted: patient.authorizationAccepted,
@@ -2172,7 +2208,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   </table>
   </div>
 
-  <p class="small">Prepared by: ${escapeHtml(currentProfile?.full_name || 'Dent22 User')}</p>
+  <p class="small">Prepared by: ${escapeHtml(preparedByName)}</p>
 </body>
 </html>`
   }
@@ -2762,7 +2798,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
         </div>
       ) : null}
 
-      <div className="print-footer-note">Prepared by: {currentProfile?.full_name || 'Dent22 User'}</div>
+      <div className="print-footer-note">Prepared by: {preparedByName}</div>
     </>
   )
 }

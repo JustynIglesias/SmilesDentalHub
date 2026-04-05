@@ -962,11 +962,18 @@ body {
 
 .filter-date-input {
   position: relative;
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .filter-date-display {
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding-right: 42px !important;
   cursor: pointer;
 }
@@ -1671,7 +1678,7 @@ body {
 
 .pagination {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1679,10 +1686,10 @@ body {
 .pagination-group {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 5px;
+  padding: 5px 7px;
   border: 1px solid var(--border-soft);
-  border-radius: 10px;
+  border-radius: 11px;
   background: var(--surface-soft);
 }
 
@@ -1701,25 +1708,25 @@ body {
   border: none;
   background: #e3e8ec;
   color: #7d8992;
-  padding: 4px 8px;
-  min-height: 30px;
-  border-radius: 7px;
+  padding: 3px 7px;
+  min-height: 28px;
+  border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .pagination-nav-group button:first-child,
 .pagination-nav-group button:last-child {
-  min-width: 30px;
-  min-height: 30px;
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
   border-radius: 999px;
   background: linear-gradient(180deg, #ffffff 0%, #edf5fa 100%);
   border: 1px solid #c8d7e1;
   color: #286f94;
   box-shadow: 0 6px 14px rgba(27, 92, 121, 0.12);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
   font-weight: 700;
 }
@@ -1740,36 +1747,36 @@ body {
 .page-jump-form label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: #47606f;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 
 .page-size-control select,
 .page-jump-form input {
-  border-radius: 9px;
+  border-radius: 8px;
   border: 1px solid var(--border-strong);
-  padding: 4px 8px;
-  min-height: 30px;
+  padding: 3px 7px;
+  min-height: 28px;
   background: #fff;
   color: #214252;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .page-size-control select {
-  min-width: 72px;
+  min-width: 64px;
 }
 
 .page-jump-form {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-left: 0;
 }
 
 .page-jump-form input {
-  width: 66px;
+  width: 56px;
 }
 
 .easy-date-input {
@@ -2932,9 +2939,15 @@ body {
 
 .birthdate-picker-hidden {
   position: absolute;
+  left: 0;
+  top: 0;
   width: 0;
+  min-width: 0;
+  max-width: 0;
   height: 0;
+  max-height: 0;
   opacity: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -7062,7 +7075,7 @@ body {
 .admin-panel.v2 .page-size-control,
 .admin-panel.v2 .page-jump-form label,
 .admin-panel.v2 .pagination button {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .admin-panel.v2 .records-footer > span {
@@ -7070,35 +7083,35 @@ body {
 }
 
 .admin-panel.v2 .pagination {
-  gap: 8px;
+  gap: 5px;
   justify-content: flex-end;
 }
 
 .admin-panel.v2 .pagination-group {
-  padding: 6px 8px;
-  border-radius: 14px;
+  padding: 5px 7px;
+  border-radius: 11px;
 }
 
 .admin-panel.v2 .page-size-control,
 .admin-panel.v2 .page-jump-form label {
-  gap: 6px;
+  gap: 4px;
 }
 
 .admin-panel.v2 .page-size-control select,
 .admin-panel.v2 .page-jump-form input,
 .admin-panel.v2 .pagination button {
-  min-height: 32px;
+  min-height: 28px;
 }
 
 .admin-panel.v2 .page-size-control select,
 .admin-panel.v2 .page-jump-form input {
-  padding: 3px 8px;
+  padding: 3px 7px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .admin-panel.v2 .page-size-control select {
-  min-width: 62px;
+  min-width: 64px;
 }
 
 .admin-panel.v2 .page-jump-form {
@@ -7106,20 +7119,20 @@ body {
 }
 
 .admin-panel.v2 .page-jump-form input {
-  width: 72px;
+  width: 56px;
 }
 
 .admin-panel.v2 .pagination button {
-  padding: 3px 8px;
-  border-radius: 7px;
+  padding: 3px 7px;
+  border-radius: 6px;
 }
 
 .admin-panel.v2 .pagination-nav-group button:first-child,
 .admin-panel.v2 .pagination-nav-group button:last-child {
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .admin-panel.v2 .search-box input::placeholder {
@@ -7585,38 +7598,38 @@ body {
 .patient-records-page .page-size-control,
 .patient-records-page .page-jump-form label,
 .patient-records-page .pagination button {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .patient-records-page .pagination {
-  gap: 8px;
+  gap: 5px;
 }
 
 .patient-records-page .pagination-group {
-  padding: 6px 8px;
-  border-radius: 14px;
+  padding: 5px 7px;
+  border-radius: 11px;
 }
 
 .patient-records-page .page-size-control,
 .patient-records-page .page-jump-form label {
-  gap: 6px;
+  gap: 4px;
 }
 
 .patient-records-page .page-size-control select,
 .patient-records-page .page-jump-form input,
 .patient-records-page .pagination button {
-  min-height: 26px;
+  min-height: 28px;
 }
 
 .patient-records-page .page-size-control select,
 .patient-records-page .page-jump-form input {
-  padding: 3px 8px;
+  padding: 3px 7px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .patient-records-page .page-size-control select {
-  min-width: 62px;
+  min-width: 64px;
 }
 
 .patient-records-page .page-jump-form {
@@ -7624,20 +7637,20 @@ body {
 }
 
 .patient-records-page .page-jump-form input {
-  width: 54px;
+  width: 56px;
 }
 
 .patient-records-page .pagination button {
-  padding: 3px 8px;
-  border-radius: 7px;
+  padding: 3px 7px;
+  border-radius: 6px;
 }
 
 .patient-records-page .pagination-nav-group button:first-child,
 .patient-records-page .pagination-nav-group button:last-child {
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .patient-records-table .table-head,

@@ -7,6 +7,7 @@ const { sendSupabaseError } = require('../lib/response');
 const {
   isSmtpConfigured,
   sendEmailChangeVerificationEmail,
+  sendFailedLoginAlertEmail,
   sendPasswordResetVerificationEmail,
   sendStaffOnboardingVerificationEmail,
   sendWelcomeTestEmail,
@@ -16,10 +17,13 @@ const router = express.Router();
 const emailChangeVerificationStore = new Map();
 const staffOnboardingVerificationStore = new Map();
 const passwordResetVerificationStore = new Map();
+const failedLoginAlertStore = new Map();
 const EMAIL_CHANGE_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
 const PASSWORD_RESET_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const FAILED_LOGIN_ALERT_THRESHOLD = 4;
+const FAILED_LOGIN_TRACKING_WINDOW_MS = 30 * 60 * 1000;
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -34,6 +38,60 @@ function isPlaceholderStaffEmail(email) {
 
 function createSixDigitCode() {
   return crypto.randomInt(100000, 1000000).toString();
+}
+
+function getFailedLoginAlertEntry(email) {
+  const normalizedEmail = normalizeString(email).toLowerCase();
+  if (!normalizedEmail) return null;
+
+  const now = Date.now();
+  const existingEntry = failedLoginAlertStore.get(normalizedEmail);
+  if (!existingEntry) {
+    return {
+      email: normalizedEmail,
+      count: 0,
+      firstFailedAt: now,
+      lastFailedAt: now,
+    };
+  }
+
+  if ((now - Number(existingEntry.lastFailedAt || 0)) > FAILED_LOGIN_TRACKING_WINDOW_MS) {
+    failedLoginAlertStore.delete(normalizedEmail);
+    return {
+      email: normalizedEmail,
+      count: 0,
+      firstFailedAt: now,
+      lastFailedAt: now,
+    };
+  }
+
+  return existingEntry;
+}
+
+function clearFailedLoginAlertEntry(email) {
+  const normalizedEmail = normalizeString(email).toLowerCase();
+  if (!normalizedEmail) return;
+  failedLoginAlertStore.delete(normalizedEmail);
+}
+
+async function recordFailedLoginAttempt(email) {
+  const entry = getFailedLoginAlertEntry(email);
+  if (!entry?.email) return;
+
+  const now = Date.now();
+  entry.count += 1;
+  entry.lastFailedAt = now;
+  failedLoginAlertStore.set(entry.email, entry);
+
+  if (!isSmtpConfigured()) return;
+  if (entry.count < FAILED_LOGIN_ALERT_THRESHOLD) return;
+  if (entry.count % FAILED_LOGIN_ALERT_THRESHOLD !== 0) return;
+
+  await sendFailedLoginAlertEmail({
+    toEmail: entry.email,
+    attemptedAt: new Date(now).toISOString(),
+    failedAttempts: entry.count,
+  });
 }
 
 async function findAuthUserByEmail(serviceClient, email) {
@@ -279,7 +337,19 @@ router.post('/login', async (req, res) => {
       password,
     });
 
-    if (error) return sendSupabaseError(res, error, 401);
+    if (error) {
+      if (/invalid login credentials|invalid credentials|email not confirmed|invalid grant/i.test(error.message || '')) {
+        try {
+          await recordFailedLoginAttempt(resolvedEmail);
+        } catch (alertError) {
+          console.error('Failed to send failed-login alert email:', alertError);
+        }
+      }
+
+      return sendSupabaseError(res, error, 401);
+    }
+
+    clearFailedLoginAlertEntry(resolvedEmail);
 
     return res.json({
       message: 'Login successful.',

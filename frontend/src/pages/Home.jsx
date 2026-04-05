@@ -26,6 +26,15 @@ const startOfWeek = (date) => {
   return next
 }
 
+const getStaffFullName = (profile) => (
+  [
+    `${profile?.first_name || ''}`.trim(),
+    `${profile?.middle_name || ''}`.trim(),
+    `${profile?.last_name || ''}`.trim(),
+    `${profile?.suffix || ''}`.trim(),
+  ].filter(Boolean).join(' ') || `${profile?.full_name || ''}`.trim() || 'Staff'
+)
+
 function Home({ currentProfile }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -200,7 +209,7 @@ function Home({ currentProfile }) {
         <section className="top-row">
           <div className="greeting-card">
             <p>Hello there,</p>
-            <h1>{currentProfile?.full_name || 'Staff'}</h1>
+            <h1>{getStaffFullName(currentProfile)}</h1>
           </div>
           <div className="stat-card">
             <p>Patients This Week</p>

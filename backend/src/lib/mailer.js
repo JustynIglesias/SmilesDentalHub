@@ -1,5 +1,25 @@
 const nodemailer = require('nodemailer');
 const config = require('../config');
+const EMAIL_TIME_ZONE = 'Asia/Manila';
+
+function formatEmailTimestamp(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || '');
+
+  const formatter = new Intl.DateTimeFormat('en-PH', {
+    timeZone: EMAIL_TIME_ZONE,
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
+  });
+
+  return formatter.format(date);
+}
 
 function isSmtpConfigured() {
   return Boolean(config.smtpHost && config.smtpPort && config.smtpUser && config.smtpPass && config.smtpFromEmail);
@@ -26,6 +46,7 @@ async function sendWelcomeTestEmail({ toEmail, requestedBy }) {
   const fromName = config.smtpFromName || 'Smiles Dental Hub';
   const from = `"${fromName}" <${config.smtpFromEmail}>`;
   const by = requestedBy || 'Admin';
+  const sentAt = formatEmailTimestamp();
 
   const subject = 'Smiles Dental Hub - Email Delivery Test';
   const text = [
@@ -35,7 +56,7 @@ async function sendWelcomeTestEmail({ toEmail, requestedBy }) {
     'If you received this, your email delivery is working.',
     '',
     `Requested by: ${by}`,
-    `Sent at: ${new Date().toISOString()}`,
+    `Sent at: ${sentAt}`,
     '',
     'No action is required.',
   ].join('\n');
@@ -47,7 +68,7 @@ async function sendWelcomeTestEmail({ toEmail, requestedBy }) {
       <p>If you received this, your email delivery is working.</p>
       <p style="margin-top:16px">
         <strong>Requested by:</strong> ${String(by)}<br />
-        <strong>Sent at:</strong> ${new Date().toISOString()}
+        <strong>Sent at:</strong> ${sentAt}
       </p>
       <p style="margin-top:16px">No action is required.</p>
     </div>
@@ -201,7 +222,7 @@ async function sendFailedLoginAlertEmail({ toEmail, attemptedAt, failedAttempts 
   const transporter = createTransporter();
   const fromName = config.smtpFromName || 'Smiles Dental Hub';
   const from = `"${fromName}" <${config.smtpFromEmail}>`;
-  const formattedAttemptedAt = attemptedAt || new Date().toISOString();
+  const formattedAttemptedAt = formatEmailTimestamp(attemptedAt || new Date());
 
   const subject = 'Smiles Dental Hub - Security Alert for Failed Login Attempts';
   const text = [
