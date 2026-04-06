@@ -93,23 +93,6 @@ const toTitleCase = (value) => {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i
 const OPTIONAL_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'])
 
-const splitFullName = (value) => {
-  const normalized = `${value ?? ''}`.trim().replace(/\s+/g, ' ')
-  if (!normalized) {
-    return { firstName: '', lastName: '' }
-  }
-
-  const segments = normalized.split(' ')
-  if (segments.length === 1) {
-    return { firstName: segments[0], lastName: '' }
-  }
-
-  return {
-    firstName: segments.slice(0, -1).join(' '),
-    lastName: segments.slice(-1).join(' '),
-  }
-}
-
 const splitStaffProfileName = (value) => {
   const normalized = `${value ?? ''}`.trim().replace(/\s+/g, ' ')
   if (!normalized) {
@@ -456,7 +439,7 @@ function Admin() {
     setArchiveDentalConditions(dentalRes.data ?? [])
   }
 
-  const loadAll = async () => {
+  const loadAll = useMemo(() => async () => {
     setLoading(true)
     setError('')
     try {
@@ -466,11 +449,11 @@ function Admin() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void loadAll()
-  }, [])
+  }, [loadAll])
 
   useEffect(() => {
     if (archiveType === 'patients' && archiveSortBy === 'staffId') {

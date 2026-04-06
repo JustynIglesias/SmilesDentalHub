@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import clinicLogo from '../assets/DENTAL LOGO.png'
 
@@ -81,17 +81,6 @@ const splitProfileName = (value) => {
   }
 }
 
-const formatDateOnly = (value) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
 const formatDateOnlyLong = (value) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -157,8 +146,7 @@ const getProfileNameParts = (profile) => {
 }
 
 function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
-  const initialPasswordUpdatedAt = currentSessionUser?.user_metadata?.password_updated_at || ''
-  const [profileView, setProfileView] = useState(currentProfile ?? null)
+  const [profileOverride, setProfileOverride] = useState(null)
   const [profileForm, setProfileForm] = useState(() => {
     const parsedName = getProfileNameParts(currentProfile)
     return {
@@ -189,36 +177,15 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
   const [isEmailVerificationModalOpen, setIsEmailVerificationModalOpen] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
-  const [lastPasswordUpdatedAt, setLastPasswordUpdatedAt] = useState(initialPasswordUpdatedAt)
+  const [passwordUpdatedAtOverride, setPasswordUpdatedAtOverride] = useState('')
 
-  useEffect(() => {
-    setLastPasswordUpdatedAt(currentSessionUser?.user_metadata?.password_updated_at || '')
-  }, [currentSessionUser])
-
-  useEffect(() => {
-    setProfileView(currentProfile ?? null)
-    const parsedName = getProfileNameParts(currentProfile)
-    setProfileForm({
-      firstName: parsedName.firstName,
-      middleName: parsedName.middleName,
-      lastName: parsedName.lastName,
-      suffix: parsedName.suffix,
-      birthDate: currentProfile?.birth_date || '',
-      mobileNumber: toPhilippineLocalMobileInput(currentProfile?.mobile_number || ''),
-      address: currentProfile?.address || '',
-      username: currentProfile?.username || '',
-    })
-    setNewEmail('')
-    if (!isEmailVerificationModalOpen && !pendingEmailVerification) {
-      setPendingEmailVerification('')
-      setEmailVerificationCode('')
-      setEmailVerificationError('')
-      setEmailVerificationInfo('')
-    }
-  }, [currentProfile, isEmailVerificationModalOpen, pendingEmailVerification])
-
-  const profileSource = profileView ?? currentProfile ?? {}
+  const profileSource = (
+    profileOverride?.user_id && profileOverride.user_id === currentProfile?.user_id
+      ? profileOverride
+      : currentProfile
+  ) ?? {}
   const parsedProfileName = getProfileNameParts(profileSource)
+  const lastPasswordUpdatedAt = passwordUpdatedAtOverride || currentSessionUser?.user_metadata?.password_updated_at || ''
 
   const closeSuccessModal = () => {
     setIsSuccessModalOpen(false)
@@ -318,7 +285,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
       return
     }
 
-    setProfileView(data)
+    setProfileOverride(data)
     onProfileChange?.(data)
     setIsEditingProfile(false)
     setIsSavingProfile(false)
@@ -433,7 +400,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
         return
       }
 
-      setProfileView((previous) => ({ ...(previous || {}), email: trimmedPendingEmail }))
+      setProfileOverride((previous) => ({ ...(previous || {}), email: trimmedPendingEmail }))
       onProfileChange?.((previous) => ({ ...(previous || {}), email: trimmedPendingEmail }))
       setNewEmail('')
       setPendingEmailVerification('')
@@ -551,7 +518,7 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
 
       setNewPassword('')
       setConfirmPassword('')
-      setLastPasswordUpdatedAt(payload?.passwordUpdatedAt || payload?.user?.user_metadata?.password_updated_at || '')
+      setPasswordUpdatedAtOverride(payload?.passwordUpdatedAt || payload?.user?.user_metadata?.password_updated_at || '')
       setSuccessMessage('Password updated successfully.')
       setIsSuccessModalOpen(true)
       setIsSubmitting(false)

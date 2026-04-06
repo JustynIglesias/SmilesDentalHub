@@ -501,7 +501,7 @@ function AppRoutes() {
     setStaffOnboardingError('')
     setStaffOnboardingInfo('')
     setStaffOnboardingFieldErrors({})
-  }, [profile?.user_id, profile?.email, profile?.birth_date, profile?.mobile_number, profile?.address])
+  }, [profile])
 
   const handleStaffOnboardingFieldChange = (event) => {
     const { name, value } = event.target
@@ -1068,6 +1068,7 @@ function AppRoutes() {
   const isAuthed = Boolean(session && profile?.is_active)
   const isResetPasswordRoute = location.pathname === '/reset-password'
   const isStaffOnboardingOpen = isAuthed && requiresStaffOnboarding(profile)
+  const onboardingFirstName = `${profile?.first_name || profile?.full_name || 'User'}`.trim().split(/\s+/)[0]
 
   if (!isAuthed && location.pathname !== '/login' && !isResetPasswordRoute) {
     return <Navigate to="/login" replace />
@@ -1140,13 +1141,15 @@ function AppRoutes() {
           <section className="pr-modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="staff-onboarding-title">
             <div className="pr-modal-head">
               <h2 id="staff-onboarding-title">
-                {staffOnboardingStep === 'details' ? 'Complete Your Profile' : 'Verify Your Email'}
+                {staffOnboardingStep === 'details' ? `Welcome ${onboardingFirstName}` : 'Verify Your Email'}
               </h2>
             </div>
             <div className="pr-modal-body">
               {staffOnboardingStep === 'details' ? (
                 <form className="onboarding-form" onSubmit={(event) => { void handleStaffOnboardingSubmit(event) }}>
-                  <p>Please complete your details first before accessing the system.</p>
+                  <p>
+                    This form is a one-time step for new users only. Please complete your details now so we can finish setting up your account before you access the system.
+                  </p>
                   <div className="onboarding-grid">
                     <label className={staffOnboardingFieldErrors.email ? 'field-required has-error' : 'field-required'}>
                       <span className="field-label-copy">Email</span>

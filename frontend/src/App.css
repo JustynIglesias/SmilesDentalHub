@@ -2360,8 +2360,14 @@ body {
   border-color: #f0c7cd;
 }
 
+.onboarding-modal .pr-modal-head {
+  justify-content: center;
+}
+
 .onboarding-modal .pr-modal-head h2 {
+  width: 100%;
   font-size: clamp(28px, 3vw, 42px);
+  text-align: center;
 }
 
 .onboarding-modal .pr-modal-body {
