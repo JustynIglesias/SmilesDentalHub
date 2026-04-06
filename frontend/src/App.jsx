@@ -18,6 +18,7 @@ const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
 const LAST_PROTECTED_ROUTE_KEY = 'dent22.lastProtectedRoute'
 const PLACEHOLDER_EMAIL_DOMAINS = ['@smilesdentalhub.local', '@dent22.local']
 const BACKEND_STARTING_ERROR = 'BACKEND_STARTING_ERROR'
+const INACTIVITY_LOGOUT_MS = 15 * 60 * 1000
 
 const sleep = (ms) => new Promise((resolve) => {
   window.setTimeout(resolve, ms)
@@ -243,7 +244,9 @@ function AppRoutes() {
   const [staffOnboardingFieldErrors, setStaffOnboardingFieldErrors] = useState({})
   const [isStaffOnboardingSubmitting, setIsStaffOnboardingSubmitting] = useState(false)
   const [isStaffOnboardingVerifying, setIsStaffOnboardingVerifying] = useState(false)
+  const [isStaffOnboardingResending, setIsStaffOnboardingResending] = useState(false)
   const profileUserIdRef = useRef(null)
+  const inactivityTimerRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -289,6 +292,36 @@ function AppRoutes() {
     setError('')
     return true
   }, [])
+
+  const signOutAndRedirect = useCallback(async ({ message = '', redirectPath = '/login' } = {}) => {
+    if (!supabase) return
+
+    if (inactivityTimerRef.current) {
+      window.clearTimeout(inactivityTimerRef.current)
+      inactivityTimerRef.current = null
+    }
+
+    const { error: signOutError } = await supabase.auth.signOut()
+    if (signOutError) {
+      setError(signOutError.message || message || 'Unable to log out right now.')
+      return
+    }
+
+    setProfile(null)
+    setNavItems([])
+    setForm({ username: '', password: '' })
+    setShowPassword(false)
+    setSession(null)
+    setStaffOnboardingStep('details')
+    setStaffOnboardingCode('')
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+    setIsStaffOnboardingResending(false)
+    setIsLogoutModalOpen(false)
+    sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
+    setError(message)
+    navigate(redirectPath, { replace: true })
+  }, [navigate])
 
   useEffect(() => {
     if (!supabase) return undefined
@@ -394,40 +427,65 @@ function AppRoutes() {
     let isMounted = true
 
     const validateSessionToken = async () => {
-      if (document.visibilityState !== 'visible') return
-
       const { data, error: sessionError } = await supabase.auth.getSession()
 
       if (!isMounted) return
 
       if (sessionError) {
         setError('Session validation failed. Please login again.')
-        await supabase.auth.signOut()
+        await signOutAndRedirect({ message: 'Session validation failed. Please login again.' })
         return
       }
 
       const accessToken = data.session?.access_token
       if (!data.session || !accessToken || isAccessTokenExpired(accessToken)) {
-        setError('Session token expired. Please login again.')
-        await supabase.auth.signOut()
+        await signOutAndRedirect({ message: 'Session token expired. Please login again.' })
       }
     }
-
-    const handleVisibilityChange = () => {
-      void validateSessionToken()
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
     const tokenCheckTimer = window.setInterval(() => {
-      void validateSessionToken()
+      if (document.visibilityState === 'visible') {
+        void validateSessionToken()
+      }
     }, 60000)
 
     return () => {
       isMounted = false
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.clearInterval(tokenCheckTimer)
     }
-  }, [session])
+  }, [session, signOutAndRedirect])
+
+  useEffect(() => {
+    if (!supabase || !session) return undefined
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click']
+
+    const resetInactivityTimer = () => {
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current)
+      }
+
+      inactivityTimerRef.current = window.setTimeout(() => {
+        void signOutAndRedirect({
+          message: 'You were logged out after 15 minutes of inactivity.',
+        })
+      }, INACTIVITY_LOGOUT_MS)
+    }
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetInactivityTimer, { passive: true })
+    })
+    resetInactivityTimer()
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetInactivityTimer)
+      })
+    }
+  }, [session, signOutAndRedirect])
 
   useEffect(() => {
     if (!profile) return
@@ -542,6 +600,65 @@ function AppRoutes() {
           : 'Unable to start profile verification.',
       )
       setIsStaffOnboardingSubmitting(false)
+    }
+  }
+
+  const handleStaffOnboardingResend = async () => {
+    if (!supabase || !session?.user?.id) return
+
+    const email = staffOnboardingForm.email.trim().toLowerCase()
+    const birthDate = staffOnboardingForm.birthDate
+    const mobileNumber = normalizePhilippineMobile(staffOnboardingForm.mobileNumber)
+    const address = staffOnboardingForm.address.trim()
+
+    if (!email || !birthDate || !mobileNumber || !address) {
+      setStaffOnboardingError('Please complete all required details before requesting a new code.')
+      setStaffOnboardingInfo('')
+      return
+    }
+
+    setIsStaffOnboardingResending(true)
+    setStaffOnboardingError('')
+    setStaffOnboardingInfo('')
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession()
+      const accessToken = data?.session?.access_token || ''
+      if (sessionError || !accessToken) {
+        setStaffOnboardingError('Your session expired. Please log in again.')
+        setIsStaffOnboardingResending(false)
+        return
+      }
+
+      const { response, payload } = await fetchJsonWithBackendRetry('/api/auth/start-staff-onboarding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email,
+          birthDate,
+          mobileNumber: `+63${mobileNumber}`,
+          address,
+        }),
+      })
+      if (!response.ok) {
+        setStaffOnboardingError(payload?.error || 'Unable to resend verification code.')
+        setIsStaffOnboardingResending(false)
+        return
+      }
+
+      setStaffOnboardingCode('')
+      setStaffOnboardingInfo(`A new verification code was sent to ${payload?.email || email}.`)
+      setIsStaffOnboardingResending(false)
+    } catch (requestError) {
+      setStaffOnboardingError(
+        requestError?.code === BACKEND_STARTING_ERROR
+          ? 'System is still starting. Please wait a moment and try again.'
+          : 'Unable to resend verification code.',
+      )
+      setIsStaffOnboardingResending(false)
     }
   }
 
@@ -919,32 +1036,12 @@ function AppRoutes() {
   }
 
   const handleLogoutConfirm = async () => {
-    if (!supabase) return
-
     setIsLogoutModalOpen(false)
-
-    const { error: signOutError } = await supabase.auth.signOut()
-    if (signOutError) {
-      setError(signOutError.message)
-      return
-    }
-
-    setProfile(null)
-    setNavItems([])
-    setForm({ username: '', password: '' })
-    setShowPassword(false)
-    sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
-    navigate('/login', { replace: true })
+    await signOutAndRedirect()
   }
 
   const handleBackToLogin = async () => {
-    if (!supabase) return
-    await supabase.auth.signOut()
-    setStaffOnboardingStep('details')
-    setStaffOnboardingCode('')
-    setStaffOnboardingError('')
-    setStaffOnboardingInfo('')
-    navigate('/login', { replace: true })
+    await signOutAndRedirect()
   }
 
   const handleStaffOnboardingBackToDetails = (event) => {
@@ -1102,11 +1199,14 @@ function AppRoutes() {
                   {staffOnboardingError ? <p className="error">{staffOnboardingError}</p> : null}
                   {staffOnboardingInfo ? <p className="onboarding-success">{staffOnboardingInfo}</p> : null}
                   <div className="modal-actions">
-                    <button type="button" className="ghost onboarding-secondary-btn" onClick={() => { void handleBackToLogin() }} disabled={isStaffOnboardingVerifying}>
+                    <button type="button" className="ghost onboarding-secondary-btn" onClick={() => { void handleBackToLogin() }} disabled={isStaffOnboardingVerifying || isStaffOnboardingResending}>
                       Back to Login
                     </button>
-                    <button type="button" className="ghost onboarding-secondary-btn" onClick={handleStaffOnboardingBackToDetails} disabled={isStaffOnboardingVerifying}>
+                    <button type="button" className="ghost onboarding-secondary-btn" onClick={handleStaffOnboardingBackToDetails} disabled={isStaffOnboardingVerifying || isStaffOnboardingResending}>
                       Back to Details
+                    </button>
+                    <button type="button" className="ghost onboarding-secondary-btn" onClick={() => { void handleStaffOnboardingResend() }} disabled={isStaffOnboardingVerifying || isStaffOnboardingResending}>
+                      {isStaffOnboardingResending ? 'Resending...' : 'Resend Code'}
                     </button>
                     <button type="submit" className="success-btn" disabled={isStaffOnboardingVerifying}>
                       {isStaffOnboardingVerifying ? 'Verifying...' : 'Verify Code'}

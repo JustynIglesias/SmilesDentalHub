@@ -209,12 +209,13 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
       username: currentProfile?.username || '',
     })
     setNewEmail('')
-    setPendingEmailVerification('')
-    setEmailVerificationCode('')
-    setEmailVerificationError('')
-    setEmailVerificationInfo('')
-    setIsEmailVerificationModalOpen(false)
-  }, [currentProfile])
+    if (!isEmailVerificationModalOpen && !pendingEmailVerification) {
+      setPendingEmailVerification('')
+      setEmailVerificationCode('')
+      setEmailVerificationError('')
+      setEmailVerificationInfo('')
+    }
+  }, [currentProfile, isEmailVerificationModalOpen, pendingEmailVerification])
 
   const profileSource = profileView ?? currentProfile ?? {}
   const parsedProfileName = getProfileNameParts(profileSource)
