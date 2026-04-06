@@ -185,7 +185,13 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
       : currentProfile
   ) ?? {}
   const parsedProfileName = getProfileNameParts(profileSource)
-  const lastPasswordUpdatedAt = passwordUpdatedAtOverride || currentSessionUser?.user_metadata?.password_updated_at || ''
+  const lastPasswordUpdatedAt = (
+    passwordUpdatedAtOverride
+    || currentSessionUser?.user_metadata?.password_updated_at
+    || currentSessionUser?.updated_at
+    || currentSessionUser?.last_sign_in_at
+    || ''
+  )
 
   const closeSuccessModal = () => {
     setIsSuccessModalOpen(false)

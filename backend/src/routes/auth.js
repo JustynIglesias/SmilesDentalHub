@@ -29,6 +29,13 @@ function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function mergeUserMetadata(user, updates = {}) {
+  return {
+    ...(user?.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}),
+    ...updates,
+  };
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
 function isPlaceholderStaffEmail(email) {
@@ -497,6 +504,16 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
       return res.status(400).json({ error: 'newPassword is required.' });
     }
 
+    if (!config.supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for password updates.' });
+    }
+
+    const client = createSupabaseClient({ accessToken: req.accessToken });
+    const { data: currentUserData, error: currentUserError } = await client.auth.getUser();
+    if (currentUserError || !currentUserData?.user?.id) {
+      return sendSupabaseError(res, currentUserError || { message: 'Unable to load current user.' }, 401);
+    }
+
     const response = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
       method: 'PUT',
       headers: {
@@ -517,9 +534,19 @@ router.post('/update-password', requireAccessToken, async (req, res) => {
       });
     }
 
+    const passwordUpdatedAt = new Date().toISOString();
+    const serviceClient = createSupabaseClient({ useServiceRole: true });
+    const { data: updatedUserData, error: metadataUpdateError } = await serviceClient.auth.admin.updateUserById(currentUserData.user.id, {
+      user_metadata: mergeUserMetadata(payload?.user || currentUserData.user, {
+        password_updated_at: passwordUpdatedAt,
+      }),
+    });
+    if (metadataUpdateError) return sendSupabaseError(res, metadataUpdateError, 500);
+
     return res.json({
       message: 'Password updated successfully.',
-      user: payload?.user || null,
+      passwordUpdatedAt,
+      user: updatedUserData?.user || payload?.user || null,
     });
   } catch (error) {
     return sendSupabaseError(res, error, 500);
@@ -570,8 +597,17 @@ router.post('/complete-forgot-password', async (req, res) => {
     }
 
     const serviceClient = createSupabaseClient({ useServiceRole: true });
+    const passwordUpdatedAt = new Date().toISOString();
+    const { data: existingUserData, error: existingUserError } = await serviceClient.auth.admin.getUserById(storedVerification.userId);
+    if (existingUserError || !existingUserData?.user) {
+      return sendSupabaseError(res, existingUserError || { message: 'Unable to load user for password reset.' }, 400);
+    }
+
     const { error } = await serviceClient.auth.admin.updateUserById(storedVerification.userId, {
       password: newPassword,
+      user_metadata: mergeUserMetadata(existingUserData.user, {
+        password_updated_at: passwordUpdatedAt,
+      }),
     });
     if (error) return sendSupabaseError(res, error, 400);
 
@@ -580,6 +616,7 @@ router.post('/complete-forgot-password', async (req, res) => {
     return res.json({
       message: 'Password updated successfully.',
       email: resolvedEmail,
+      passwordUpdatedAt,
     });
   } catch (error) {
     return sendSupabaseError(res, error, 500);
