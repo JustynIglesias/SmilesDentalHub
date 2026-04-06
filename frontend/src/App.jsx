@@ -12,10 +12,12 @@ import PatientLogs from './pages/PatientLogs'
 import Admin from './pages/Admin'
 import ResetPassword from './pages/ResetPassword'
 import Settings from './pages/Settings'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX, clearSessionStorageByPrefix } from './hooks/useSessionStorageState'
 import { isAccessTokenExpired, missingSupabaseEnv, supabase } from './lib/supabaseClient'
 
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
 const LAST_PROTECTED_ROUTE_KEY = 'dent22.lastProtectedRoute'
+const APP_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}app.`
 const PLACEHOLDER_EMAIL_DOMAINS = ['@smilesdentalhub.local', '@dent22.local']
 const BACKEND_STARTING_ERROR = 'BACKEND_STARTING_ERROR'
 const INACTIVITY_LOGOUT_MS = 15 * 60 * 1000
@@ -230,8 +232,8 @@ function AppRoutes() {
   const [isSendingReset, setIsSendingReset] = useState(false)
   const [isResendingForgotCode, setIsResendingForgotCode] = useState(false)
   const [isResettingPassword, setIsResettingPassword] = useState(false)
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
-  const [staffOnboardingStep, setStaffOnboardingStep] = useState('details')
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useSessionStorageState(`${APP_UI_STORAGE_PREFIX}logoutModalOpen`, false)
+  const [staffOnboardingStep, setStaffOnboardingStep] = useSessionStorageState(`${APP_UI_STORAGE_PREFIX}staffOnboardingStep`, 'details')
   const [staffOnboardingForm, setStaffOnboardingForm] = useState({
     email: '',
     birthDate: '',
@@ -246,6 +248,7 @@ function AppRoutes() {
   const [isStaffOnboardingVerifying, setIsStaffOnboardingVerifying] = useState(false)
   const [isStaffOnboardingResending, setIsStaffOnboardingResending] = useState(false)
   const profileUserIdRef = useRef(null)
+  const onboardingUserIdRef = useRef(null)
   const inactivityTimerRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -318,6 +321,7 @@ function AppRoutes() {
     setStaffOnboardingInfo('')
     setIsStaffOnboardingResending(false)
     setIsLogoutModalOpen(false)
+    clearSessionStorageByPrefix(UI_SESSION_STORAGE_PREFIX)
     sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
     setError(message)
     navigate(redirectPath, { replace: true })
@@ -348,6 +352,7 @@ function AppRoutes() {
       setIsResendingForgotCode(false)
       setIsResettingPassword(false)
       setIsLogoutModalOpen(false)
+      clearSessionStorageByPrefix(UI_SESSION_STORAGE_PREFIX)
       sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
     }
 
@@ -490,17 +495,25 @@ function AppRoutes() {
   useEffect(() => {
     if (!profile) return
 
+    const profileUserId = profile?.user_id || null
+    const isSameOnboardingUser = onboardingUserIdRef.current === profileUserId
+
     setStaffOnboardingForm({
       email: isPlaceholderStaffEmail(profile?.email) ? '' : `${profile?.email || ''}`.trim(),
       birthDate: profile?.birth_date || '',
       mobileNumber: toPhilippineLocalMobileInput(profile?.mobile_number || ''),
       address: profile?.address || '',
     })
-    setStaffOnboardingStep('details')
-    setStaffOnboardingCode('')
-    setStaffOnboardingError('')
-    setStaffOnboardingInfo('')
-    setStaffOnboardingFieldErrors({})
+
+    if (!isSameOnboardingUser) {
+      setStaffOnboardingStep('details')
+      setStaffOnboardingCode('')
+      setStaffOnboardingError('')
+      setStaffOnboardingInfo('')
+      setStaffOnboardingFieldErrors({})
+    }
+
+    onboardingUserIdRef.current = profileUserId
   }, [profile])
 
   const handleStaffOnboardingFieldChange = (event) => {

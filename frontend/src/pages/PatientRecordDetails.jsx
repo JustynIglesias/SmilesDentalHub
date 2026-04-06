@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import dentalChart1 from '../assets/Dental Chart 1.png'
 import dentalChart2 from '../assets/Dental Chart 2.png'
 import { supabase } from '../lib/supabaseClient'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 
 const HEALTH = [
   'Low Blood Pressure',
@@ -564,11 +565,12 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   ].filter(Boolean).join(' ') || `${currentProfile?.full_name || ''}`.trim() || 'Dent22 User'
   const navigate = useNavigate()
   const { id } = useParams()
+  const patientRecordUiStoragePrefix = `${UI_SESSION_STORAGE_PREFIX}patientRecordDetails.${id || 'unknown'}.`
   const isReceptionist = currentRole === 'receptionist'
   const canManageServiceDetails = !isReceptionist
 
   const [tab, setTab] = useState('patient')
-  const [modal, setModal] = useState(null)
+  const [modal, setModal] = useSessionStorageState(`${patientRecordUiStoragePrefix}modal`, null)
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -583,17 +585,17 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   const [legendOptions, setLegendOptions] = useState([])
   const [serviceOptions, setServiceOptions] = useState([])
   const [serviceRows, setServiceRows] = useState([])
-  const [selectedService, setSelectedService] = useState(null)
+  const [selectedService, setSelectedService] = useSessionStorageState(`${patientRecordUiStoragePrefix}selectedService`, null)
   const [patientDocuments, setPatientDocuments] = useState([])
   const [isUploadingDocument, setIsUploadingDocument] = useState(false)
   const [serviceFormError, setServiceFormError] = useState('')
-  const [serviceForm, setServiceForm] = useState(() => initialServiceForm())
-  const [isServiceSaveConfirmOpen, setIsServiceSaveConfirmOpen] = useState(false)
-  const [pendingDentalSave, setPendingDentalSave] = useState(null)
+  const [serviceForm, setServiceForm] = useSessionStorageState(`${patientRecordUiStoragePrefix}serviceForm`, initialServiceForm())
+  const [isServiceSaveConfirmOpen, setIsServiceSaveConfirmOpen] = useSessionStorageState(`${patientRecordUiStoragePrefix}serviceSaveConfirmOpen`, false)
+  const [pendingDentalSave, setPendingDentalSave] = useSessionStorageState(`${patientRecordUiStoragePrefix}pendingDentalSave`, null)
   const [dentalRecordHistory, setDentalRecordHistory] = useState([])
   const [selectedDentalRecordId, setSelectedDentalRecordId] = useState('')
   const [dentalRecord, setDentalRecord] = useState(() => cloneDentalRecord(DEFAULT_DENTAL_RECORD))
-  const [dentalRecordForm, setDentalRecordForm] = useState(() => cloneDentalRecord(DEFAULT_DENTAL_RECORD))
+  const [dentalRecordForm, setDentalRecordForm] = useSessionStorageState(`${patientRecordUiStoragePrefix}dentalRecordForm`, cloneDentalRecord(DEFAULT_DENTAL_RECORD))
   const [dentalRecordMeta, setDentalRecordMeta] = useState({ updatedAt: '', updatedByName: '-' })
   const [exportPreviewHtml, setExportPreviewHtml] = useState('')
   const [birthdateInput, setBirthdateInput] = useState('')

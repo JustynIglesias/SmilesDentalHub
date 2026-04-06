@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 
 const DEFAULT_PAGE_SIZE = 10
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 30, 40, 50, 60]
+const ADMIN_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}admin.`
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
@@ -208,7 +210,7 @@ const formatStaffDisplayName = (profile) => {
 function Admin() {
   const importFileInputRef = useRef(null)
   const [tab, setTab] = useState('users')
-  const [showAddUser, setShowAddUser] = useState(false)
+  const [showAddUser, setShowAddUser] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}showAddUser`, false)
   const [users, setUsers] = useState([])
   const [inactivePatients, setInactivePatients] = useState([])
   const [archivePatients, setArchivePatients] = useState([])
@@ -241,9 +243,9 @@ function Admin() {
   const [archiveNameSortDirection, setArchiveNameSortDirection] = useState('asc')
   const [archiveIdSortDirection, setArchiveIdSortDirection] = useState('desc')
   const [archiveDateSortDirection, setArchiveDateSortDirection] = useState('desc')
-  const [modal, setModal] = useState(null)
-  const [selected, setSelected] = useState(null)
-  const [successMessage, setSuccessMessage] = useState('')
+  const [modal, setModal] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}modal`, null)
+  const [selected, setSelected] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}selected`, null)
+  const [successMessage, setSuccessMessage] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}successMessage`, '')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [isEditingUser, setIsEditingUser] = useState(false)
@@ -254,9 +256,9 @@ function Admin() {
   const [importSummary, setImportSummary] = useState(null)
   const [importError, setImportError] = useState('')
   const [isImporting, setIsImporting] = useState(false)
-  const [showUsersFilters, setShowUsersFilters] = useState(false)
-  const [showInactiveFilters, setShowInactiveFilters] = useState(false)
-  const [showArchiveFilters, setShowArchiveFilters] = useState(false)
+  const [showUsersFilters, setShowUsersFilters] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}showUsersFilters`, false)
+  const [showInactiveFilters, setShowInactiveFilters] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}showInactiveFilters`, false)
+  const [showArchiveFilters, setShowArchiveFilters] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}showArchiveFilters`, false)
   const [usersRoleFilter, setUsersRoleFilter] = useState('')
   const [usersCreatedFromFilter, setUsersCreatedFromFilter] = useState('')
   const [usersCreatedToFilter, setUsersCreatedToFilter] = useState('')
@@ -271,7 +273,7 @@ function Admin() {
   const [archiveMaxAgeFilter, setArchiveMaxAgeFilter] = useState('')
   const [archiveDateFromFilter, setArchiveDateFromFilter] = useState('')
   const [archiveDateToFilter, setArchiveDateToFilter] = useState('')
-  const [userForm, setUserForm] = useState({
+  const [userForm, setUserForm] = useSessionStorageState(`${ADMIN_UI_STORAGE_PREFIX}userForm`, {
     user_id: '',
     first_name: '',
     middle_name: '',

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 
 const formatPrice = (value) => Number(value || 0).toLocaleString('en-PH', {
   minimumFractionDigits: 2,
@@ -23,9 +24,10 @@ const toTitleCase = (value) => {
 const normalizeLegendCode = (value) => `${value ?? ''}`.trim().toUpperCase()
 const normalizeConditionName = (value) => `${value ?? ''}`.trim().replace(/\s+/g, ' ').toLowerCase()
 const sanitizeLegendCodeInput = (value) => `${value ?? ''}`.toUpperCase().slice(0, 3)
+const PROCEDURES_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}procedures.`
 
 function Procedures({ currentProfile }) {
-  const [tab, setTab] = useState('services')
+  const [tab, setTab] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}tab`, 'services')
   const [services, setServices] = useState([])
   const [legends, setLegends] = useState([])
   const [serviceSearchTerm, setServiceSearchTerm] = useState('')
@@ -34,14 +36,14 @@ function Procedures({ currentProfile }) {
   const [addServicePrice, setAddServicePrice] = useState('')
   const [addConditionName, setAddConditionName] = useState('')
   const [addLegendCode, setAddLegendCode] = useState('')
-  const [modal, setModal] = useState(null)
-  const [selectedItem, setSelectedItem] = useState(null)
-  const [editServiceName, setEditServiceName] = useState('')
-  const [editServicePrice, setEditServicePrice] = useState('')
-  const [editCondition, setEditCondition] = useState('')
-  const [editLegendCode, setEditLegendCode] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [modal, setModal] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}modal`, null)
+  const [selectedItem, setSelectedItem] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}selectedItem`, null)
+  const [editServiceName, setEditServiceName] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}editServiceName`, '')
+  const [editServicePrice, setEditServicePrice] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}editServicePrice`, '')
+  const [editCondition, setEditCondition] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}editCondition`, '')
+  const [editLegendCode, setEditLegendCode] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}editLegendCode`, '')
+  const [successMessage, setSuccessMessage] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}successMessage`, '')
+  const [errorMessage, setErrorMessage] = useSessionStorageState(`${PROCEDURES_UI_STORAGE_PREFIX}errorMessage`, '')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const isAdmin = currentProfile?.role === 'admin'

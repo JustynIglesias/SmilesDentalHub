@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 
 const DEFAULT_PAGE_SIZE = 10
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 30, 40, 50, 60]
 const MONTH_ABBR = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May.', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.']
+const PATIENT_RECORDS_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}patientRecords.`
 
 const formatDate = (value) => {
   if (!value) return '-'
@@ -63,9 +65,9 @@ function PatientRecords() {
   const [currentPage, setCurrentPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE)
   const [pageInput, setPageInput] = useState('1')
-  const [statusConfirmRow, setStatusConfirmRow] = useState(null)
+  const [statusConfirmRow, setStatusConfirmRow] = useSessionStorageState(`${PATIENT_RECORDS_UI_STORAGE_PREFIX}statusConfirmRow`, null)
   const [isStatusUpdating, setIsStatusUpdating] = useState(false)
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useSessionStorageState(`${PATIENT_RECORDS_UI_STORAGE_PREFIX}filtersOpen`, false)
   const [sexFilter, setSexFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [minAgeFilter, setMinAgeFilter] = useState('')

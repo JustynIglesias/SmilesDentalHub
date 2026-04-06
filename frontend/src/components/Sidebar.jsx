@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 import navbarLogo from '../assets/NAVBARLOGO.png'
 import homeIcon from '../assets/icon/Home.png'
 import patientRecordsIcon from '../assets/icon/Patient Records.png'
@@ -19,6 +20,7 @@ const NAV_ICONS = {
   logs: patientLogsIcon,
   admin: adminIcon,
 }
+const SIDEBAR_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}sidebar.`
 
 function ProfileIcon() {
   return (
@@ -68,7 +70,7 @@ function Sidebar({ onLogout, navItems, isLogoutModalOpen = false }) {
   const profileItem = (navItems ?? []).find((item) => item.id === 'settings')
   const primaryNavItems = (navItems ?? []).filter((item) => item.id !== 'settings')
   const [showGuardPassword, setShowGuardPassword] = useState(false)
-  const [guardState, setGuardState] = useState({
+  const [guardState, setGuardState] = useSessionStorageState(`${SIDEBAR_UI_STORAGE_PREFIX}guardState`, {
     isOpen: false,
     nextPath: '',
     password: '',

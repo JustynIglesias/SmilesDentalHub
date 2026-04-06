@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import clinicLogo from '../assets/DENTAL LOGO.png'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 
 const ROLE_LABELS = {
   admin: 'Admin',
@@ -32,6 +33,7 @@ const formatDateTime = (value) => {
     minute: '2-digit',
   })
 }
+const SETTINGS_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}settings.`
 
 const OPTIONAL_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'])
 
@@ -163,20 +165,20 @@ function Settings({ currentProfile, currentSessionUser, onProfileChange }) {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [newEmail, setNewEmail] = useState('')
-  const [emailVerificationCode, setEmailVerificationCode] = useState('')
-  const [pendingEmailVerification, setPendingEmailVerification] = useState('')
+  const [emailVerificationCode, setEmailVerificationCode] = useSessionStorageState(`${SETTINGS_UI_STORAGE_PREFIX}emailVerificationCode`, '')
+  const [pendingEmailVerification, setPendingEmailVerification] = useSessionStorageState(`${SETTINGS_UI_STORAGE_PREFIX}pendingEmailVerification`, '')
   const [error, setError] = useState('')
   const [emailVerificationError, setEmailVerificationError] = useState('')
-  const [emailVerificationInfo, setEmailVerificationInfo] = useState('')
+  const [emailVerificationInfo, setEmailVerificationInfo] = useSessionStorageState(`${SETTINGS_UI_STORAGE_PREFIX}emailVerificationInfo`, '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false)
   const [isVerifyingEmailCode, setIsVerifyingEmailCode] = useState(false)
   const [isResendingEmailCode, setIsResendingEmailCode] = useState(false)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
-  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
-  const [isEmailVerificationModalOpen, setIsEmailVerificationModalOpen] = useState(false)
-  const [successMessage, setSuccessMessage] = useState('')
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useSessionStorageState(`${SETTINGS_UI_STORAGE_PREFIX}successModalOpen`, false)
+  const [isEmailVerificationModalOpen, setIsEmailVerificationModalOpen] = useSessionStorageState(`${SETTINGS_UI_STORAGE_PREFIX}emailVerificationModalOpen`, false)
+  const [successMessage, setSuccessMessage] = useSessionStorageState(`${SETTINGS_UI_STORAGE_PREFIX}successMessage`, '')
   const [passwordUpdatedAtOverride, setPasswordUpdatedAtOverride] = useState('')
 
   const profileSource = (

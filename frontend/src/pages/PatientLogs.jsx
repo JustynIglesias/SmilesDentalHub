@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import FilterDateInput from '../components/FilterDateInput'
 import SortDirectionIcon from '../components/SortDirectionIcon'
 import { supabase } from '../lib/supabaseClient'
+import useSessionStorageState, { UI_SESSION_STORAGE_PREFIX } from '../hooks/useSessionStorageState'
 
 const DEFAULT_PAGE_SIZE = 10
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 30, 40, 50, 60]
 const MONTH_ABBR = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May.', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.']
+const PATIENT_LOGS_UI_STORAGE_PREFIX = `${UI_SESSION_STORAGE_PREFIX}patientLogs.`
 
 const formatDateTime = (value) => {
   if (!value) return '-'
@@ -50,7 +52,7 @@ function PatientLogs() {
   const [currentPage, setCurrentPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE)
   const [pageInput, setPageInput] = useState('1')
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useSessionStorageState(`${PATIENT_LOGS_UI_STORAGE_PREFIX}filtersOpen`, false)
 
   const loadLogs = async () => {
     setLoading(true)
